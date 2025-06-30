@@ -2,13 +2,21 @@
 
 A professional personal website for Steve Shickles, AI Integration Specialist & Technology Executive.
 
-## Architecture
+## Hosting Options
 
-This website is hosted on AWS using:
+This repository supports two hosting options:
+
+### Option 1: GitHub Pages (Recommended)
+- **Free hosting** with automatic SSL
+- **Simple setup** - just enable in repository settings
+- **Custom domain support** included
+- See [GITHUB_PAGES_SETUP.md](GITHUB_PAGES_SETUP.md) for instructions
+
+### Option 2: AWS (Advanced)
 - **S3** for static website hosting
 - **CloudFront** for global content delivery
 - **CloudFormation** for infrastructure as code
-- **GitHub Actions** for CI/CD
+- See [CUSTOM_DOMAIN_SETUP.md](CUSTOM_DOMAIN_SETUP.md) for AWS setup
 
 ## Deployment
 
