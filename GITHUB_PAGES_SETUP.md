@@ -64,36 +64,6 @@ git merge dev
 git push origin master
 ```
 
-## Removing AWS Resources (Optional)
-
-If you no longer need the AWS setup:
-
-1. **Delete CloudFormation Stacks**:
-   ```bash
-   # Delete dev stack
-   aws cloudformation delete-stack --stack-name steveshickles-website-dev --region us-east-1
-
-   # Delete prod stack
-   aws cloudformation delete-stack --stack-name steveshickles-website-prod --region us-east-1
-
-   # Delete certificate stack (if created)
-   aws cloudformation delete-stack --stack-name steveshickles-acm-certificate --region us-east-1
-   ```
-
-2. **Remove AWS GitHub Secrets**:
-   - Go to Settings → Secrets and variables → Actions
-   - Delete `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-   - Delete `CERTIFICATE_ARN` and `HOSTED_ZONE_ID` (if added)
-
-3. **Remove AWS-related files** (optional):
-   ```bash
-   git rm -r cloudformation/
-   git rm .github/workflows/deploy-dev.yml
-   git rm .github/workflows/deploy-prod.yml
-   git rm CUSTOM_DOMAIN_SETUP.md
-   git commit -m "Remove AWS infrastructure files"
-   git push origin dev
-   ```
 
 ## URLs
 

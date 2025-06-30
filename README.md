@@ -2,59 +2,23 @@
 
 A professional personal website for Steve Shickles, AI Integration Specialist & Technology Executive.
 
-## Hosting Options
+## Hosting
 
-This repository supports two hosting options:
-
-### Option 1: GitHub Pages (Recommended)
+This website is hosted on GitHub Pages with:
 - **Free hosting** with automatic SSL
-- **Simple setup** - just enable in repository settings
+- **Simple deployment** - just push to master branch
 - **Custom domain support** included
-- See [GITHUB_PAGES_SETUP.md](GITHUB_PAGES_SETUP.md) for instructions
 
-### Option 2: AWS (Advanced)
-- **S3** for static website hosting
-- **CloudFront** for global content delivery
-- **CloudFormation** for infrastructure as code
-- See [CUSTOM_DOMAIN_SETUP.md](CUSTOM_DOMAIN_SETUP.md) for AWS setup
+## Quick Start
 
-## Deployment
+1. **Enable GitHub Pages**:
+   - Go to Settings → Pages in your repository
+   - Select source: Deploy from branch → master → / (root)
+   - Click Save
 
-The website automatically deploys to AWS when changes are pushed:
-- **dev branch** → Development environment (dev.steveshickles.com)
-- **master branch** → Production environment (steveshickles.com)
-
-## Setup Instructions
-
-### Prerequisites
-1. AWS Account with appropriate permissions
-2. GitHub repository with AWS credentials configured as secrets:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-
-### Initial Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/steveshickles_website.git
-   cd steveshickles_website
-   ```
-
-2. Configure AWS credentials in GitHub:
-   - Go to Settings → Secrets and variables → Actions
-   - Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-
-3. Deploy to development:
-   ```bash
-   git checkout dev
-   git push origin dev
-   ```
-
-4. Deploy to production:
-   ```bash
-   git checkout master
-   git push origin master
-   ```
+2. **Access your site**:
+   - GitHub Pages URL: https://sshickles.github.io/steveshickles_website/
+   - Custom domain: https://steveshickles.com (after DNS setup)
 
 ## Project Structure
 
@@ -62,16 +26,14 @@ The website automatically deploys to AWS when changes are pushed:
 .
 ├── index.html              # Main website page
 ├── error.html              # 404 error page
-├── cloudformation/         # AWS infrastructure templates
-│   └── s3-static-website.yaml
-└── .github/workflows/      # GitHub Actions CI/CD
-    ├── deploy-dev.yml
-    └── deploy-prod.yml
+├── CNAME                   # Custom domain configuration
+└── .github/workflows/      # GitHub Actions for automated deployment
+    └── deploy-github-pages.yml
 ```
 
-## Making Changes
+## Development Workflow
 
-1. Always work on the `dev` branch first:
+1. **Make changes on dev branch**:
    ```bash
    git checkout dev
    # Make your changes
@@ -80,40 +42,40 @@ The website automatically deploys to AWS when changes are pushed:
    git push origin dev
    ```
 
-2. Test changes in the development environment
-
-3. Merge to master for production deployment:
+2. **Deploy to production**:
    ```bash
    git checkout master
    git merge dev
    git push origin master
    ```
 
-## CloudFormation Stacks
+The GitHub Actions workflow automatically deploys to GitHub Pages when you push to master.
 
-The infrastructure creates two separate stacks:
-- `steveshickles-website-dev` - Development environment
-- `steveshickles-website-prod` - Production environment
+## Custom Domain Setup
 
-Each stack includes:
-- S3 bucket for website hosting
-- CloudFront distribution for CDN
-- Appropriate bucket policies and configurations
+If you want to use steveshickles.com:
 
-## URLs
+1. **Add DNS Records** with your domain provider:
+   ```
+   Type: A
+   Name: @
+   Value: 185.199.108.153
+          185.199.109.153
+          185.199.110.153
+          185.199.111.153
 
-After deployment, your sites will be available at:
-- Development: CloudFront URL (shown in GitHub Actions output)
-- Production: CloudFront URL (shown in GitHub Actions output)
+   Type: CNAME
+   Name: www
+   Value: sshickles.github.io
+   ```
 
-To use custom domains, you'll need to:
-1. Configure Route 53 or your DNS provider
-2. Update the CloudFormation template to include ACM certificates
-3. Configure CloudFront to use your custom domain
+2. **Verify in GitHub**:
+   - Go to Settings → Pages
+   - Custom domain should show: steveshickles.com
+   - Check "Enforce HTTPS"
 
-## Security Notes
+For detailed instructions, see [GITHUB_PAGES_SETUP.md](GITHUB_PAGES_SETUP.md).
 
-- Never commit AWS credentials to the repository
-- Use IAM roles with minimal required permissions
-- CloudFront provides HTTPS by default
-- S3 buckets are configured for public read access (required for static hosting)
+## Making Updates
+
+To update content, edit `index.html` and follow the development workflow above. Changes pushed to master will automatically deploy within a few minutes.
