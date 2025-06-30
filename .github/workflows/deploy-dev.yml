@@ -1,0 +1,109 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches:
+      - dev
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: 628707347208
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Deploy CloudFormation Stack
+      run: |
+        STACK_NAME="steveshickles-website-dev"
+        
+        # Check if stack exists
+        if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} 2>/dev/null; then
+          echo "Updating existing stack..."
+          aws cloudformation update-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://cloudformation/s3-static-website.yaml \
+            --parameters ParameterKey=Environment,ParameterValue=dev \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }} || true
+          
+          # Wait for update to complete
+          aws cloudformation wait stack-update-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || true
+        else
+          echo "Creating new stack..."
+          aws cloudformation create-stack \
+            --stack-name $STACK_NAME \
+            --template-body file://cloudformation/s3-static-website.yaml \
+            --parameters ParameterKey=Environment,ParameterValue=dev \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.AWS_REGION }}
+          
+          # Wait for creation to complete
+          aws cloudformation wait stack-create-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }}
+        fi
+
+    - name: Get Stack Outputs
+      id: stack
+      run: |
+        STACK_NAME="steveshickles-website-dev"
+        
+        # Get S3 bucket name
+        BUCKET_NAME=$(aws cloudformation describe-stacks \
+          --stack-name $STACK_NAME \
+          --region ${{ env.AWS_REGION }} \
+          --query 'Stacks[0].Outputs[?OutputKey==`S3BucketName`].OutputValue' \
+          --output text)
+        echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+        
+        # Get CloudFront Distribution ID
+        DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+          --stack-name $STACK_NAME \
+          --region ${{ env.AWS_REGION }} \
+          --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' \
+          --output text)
+        echo "distribution_id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
+        
+        # Get CloudFront URL
+        CLOUDFRONT_URL=$(aws cloudformation describe-stacks \
+          --stack-name $STACK_NAME \
+          --region ${{ env.AWS_REGION }} \
+          --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontURL`].OutputValue' \
+          --output text)
+        echo "cloudfront_url=$CLOUDFRONT_URL" >> $GITHUB_OUTPUT
+
+    - name: Sync files to S3
+      run: |
+        aws s3 sync . s3://${{ steps.stack.outputs.bucket_name }}/ \
+          --exclude ".git/*" \
+          --exclude ".github/*" \
+          --exclude "cloudformation/*" \
+          --exclude ".gitignore" \
+          --exclude "README.md" \
+          --delete
+
+    - name: Invalidate CloudFront cache
+      run: |
+        aws cloudfront create-invalidation \
+          --distribution-id ${{ steps.stack.outputs.distribution_id }} \
+          --paths "/*"
+
+    - name: Display deployment URL
+      run: |
+        echo "🚀 Development site deployed successfully!"
+        echo "CloudFront URL: ${{ steps.stack.outputs.cloudfront_url }}"
+        echo "S3 Bucket: ${{ steps.stack.outputs.bucket_name }}"
