@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steve Shickles - Technical Executive & IT Professional</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f8f9fa;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 60px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            font-weight: 300;
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .contact-info {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255,255,255,0.9);
+        }
+
+        nav {
+            background: #34495e;
+            padding: 15px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        nav a:hover {
+            background: #3498db;
+            transform: translateY(-2px);
+        }
+
+        .section {
+            padding: 80px 0;
+            margin: 0;
+        }
+
+        .section:nth-child(even) {
+            background: white;
+        }
+
+        .section h2 {
+            text-align: center;
+            margin-bottom: 50px;
+            font-size: 2.5em;
+            color: #2c3e50;
+            position: relative;
+        }
+
+        .section h2::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 4px;
+            background: #3498db;
+            border-radius: 2px;
+        }
+
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .skill-category {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .skill-category:hover {
+            transform: translateY(-5px);
+        }
+
+        .skill-category h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .skill-list {
+            list-style: none;
+        }
+
+        .skill-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .skill-list li:last-child {
+            border-bottom: none;
+        }
+
+        .skill-level {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+
+        .experience-timeline {
+            position: relative;
+            margin: 40px 0;
+        }
+
+        .timeline-item {
+            background: white;
+            margin: 30px 0;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            position: relative;
+            margin-left: 50px;
+            border-left: 4px solid #3498db;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -12px;
+            top: 30px;
+            width: 20px;
+            height: 20px;
+            background: #3498db;
+            border-radius: 50%;
+            border: 3px solid white;
+        }
+
+        .timeline-date {
+            color: #3498db;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .timeline-title {
+            font-size: 1.3em;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .timeline-company {
+            color: #7f8c8d;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+
+        .timeline-description {
+            line-height: 1.6;
+            color: #555;
+        }
+
+        .achievements {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .achievement-card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .achievement-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .achievement-number {
+            font-size: 3em;
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 10px;
+        }
+
+        .achievement-text {
+            color: #2c3e50;
+            font-weight: 500;
+        }
+
+        .cta-section {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            text-align: center;
+            padding: 80px 0;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: white;
+            color: #2c3e50;
+            padding: 15px 40px;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: bold;
+            margin-top: 30px;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+        }
+
+        footer {
+            background: #2c3e50;
+            color: white;
+            text-align: center;
+            padding: 40px 0;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+            
+            .contact-info {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            nav ul {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .timeline-item {
+                margin-left: 20px;
+            }
+            
+            .section {
+                padding: 40px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <h1>Steve Shickles</h1>
+                <div class="subtitle">AI Integration Specialist & Technology Executive</div>
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <span>📧</span>
+                        <span>steve@steveshickles.com</span>
+                    </div>
+                    <div class="contact-item">
+                        <span>📍</span>
+                        <span>Austin, Texas</span>
+                    </div>
+                    <div class="contact-item">
+                        <span>💼</span>
+                        <span>AI Integration Services - Accepting New Clients</span>
+                    </div>
+                    <div class="contact-item">
+                        <span>🔗</span>
+                        <span><a href="https://www.linkedin.com/in/steveshickles/" style="color: rgba(255,255,255,0.9); text-decoration: none;">LinkedIn Profile</a></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#about">About</a></li>
+                <li><a href="#skills">Technical Skills</a></li>
+                <li><a href="#experience">Experience</a></li>
+                <li><a href="#achievements">Achievements</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <section id="about" class="section">
+        <div class="container">
+            <h2>About Me</h2>
+            <div style="max-width: 800px; margin: 0 auto; font-size: 1.1em; line-height: 1.8; text-align: center; color: #555;">
+                <p>As a technology executive and former Principal Cloud Engineer at Zynga, I now focus on helping organizations harness the power of AI integration to transform their operations, enhance productivity, and drive competitive advantage. I bring deep technical expertise combined with proven business leadership experience from scaling companies to $20M+ revenue.</p>
+                
+                <p style="margin-top: 30px;">My unique background spans enterprise cloud infrastructure, security automation, and business scaling - providing the perfect foundation for implementing AI solutions that actually work in real-world business environments. I understand both the technical complexity and business impact of emerging technologies.</p>
+                
+                <p style="margin-top: 30px;">I'm currently accepting new clients for AI integration projects, specializing in practical implementations that deliver measurable business results. Whether you're looking to automate processes, enhance customer experiences, or unlock insights from your data, I can help bridge the gap between AI potential and business reality.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="skills" class="section">
+        <div class="container">
+            <h2>Technical Expertise</h2>
+            <div class="skills-grid">
+                <div class="skill-category">
+                    <h3>AI Integration & Automation</h3>
+                    <ul class="skill-list">
+                        <li><span>AI Solution Architecture</span><span class="skill-level">Expert</span></li>
+                        <li><span>Process Automation</span><span class="skill-level">Expert</span></li>
+                        <li><span>Machine Learning Implementation</span><span class="skill-level">Advanced</span></li>
+                        <li><span>Data Integration & Analysis</span><span class="skill-level">Expert</span></li>
+                        <li><span>AI-Powered Customer Experience</span><span class="skill-level">Advanced</span></li>
+                        <li><span>Business Intelligence & Analytics</span><span class="skill-level">Expert</span></li>
+                    </ul>
+                </div>
+                
+                <div class="skill-category">
+                    <h3>Cloud Infrastructure & DevOps</h3>
+                    <ul class="skill-list">
+                        <li><span>AWS Cloud Services</span><span class="skill-level">Expert</span></li>
+                        <li><span>Cloud Custodian</span><span class="skill-level">Expert</span></li>
+                        <li><span>AWS Transit Gateway</span><span class="skill-level">Expert</span></li>
+                        <li><span>Python/Bash Scripting</span><span class="skill-level">Expert</span></li>
+                        <li><span>Infrastructure Automation</span><span class="skill-level">Expert</span></li>
+                        <li><span>AWS China Infrastructure</span><span class="skill-level">Advanced</span></li>
+                    </ul>
+                </div>
+                
+                <div class="skill-category">
+                    <h3>Security & Governance</h3>
+                    <ul class="skill-list">
+                        <li><span>Cloud Security</span><span class="skill-level">Expert</span></li>
+                        <li><span>Network Security</span><span class="skill-level">Expert</span></li>
+                        <li><span>Compliance Management</span><span class="skill-level">Expert</span></li>
+                        <li><span>Risk Management</span><span class="skill-level">Advanced</span></li>
+                        <li><span>Security Remediation</span><span class="skill-level">Expert</span></li>
+                        <li><span>Cybersecurity Services</span><span class="skill-level">Expert</span></li>
+                    </ul>
+                </div>
+                
+                <div class="skill-category">
+                    <h3>Enterprise Architecture</h3>
+                    <ul class="skill-list">
+                        <li><span>Data Center Solutions</span><span class="skill-level">Expert</span></li>
+                        <li><span>E-commerce Platforms</span><span class="skill-level">Expert</span></li>
+                        <li><span>High-Availability Systems</span><span class="skill-level">Expert</span></li>
+                        <li><span>Cloud Migration</span><span class="skill-level">Expert</span></li>
+                        <li><span>Infrastructure Scaling</span><span class="skill-level">Expert</span></li>
+                        <li><span>Cost Optimization</span><span class="skill-level">Advanced</span></li>
+                    </ul>
+                </div>
+                
+                <div class="skill-category">
+                    <h3>Leadership & Business</h3>
+                    <ul class="skill-list">
+                        <li><span>Executive Leadership</span><span class="skill-level">Expert</span></li>
+                        <li><span>Team Building & Mentoring</span><span class="skill-level">Expert</span></li>
+                        <li><span>P&L Management</span><span class="skill-level">Expert</span></li>
+                        <li><span>Business Scaling</span><span class="skill-level">Expert</span></li>
+                        <li><span>Strategic Planning</span><span class="skill-level">Expert</span></li>
+                        <li><span>Global Team Management</span><span class="skill-level">Advanced</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="experience" class="section">
+        <div class="container">
+            <h2>Professional Experience</h2>
+            <div class="experience-timeline">
+                <div class="timeline-item">
+                    <div class="timeline-date">2024 - Present</div>
+                    <div class="timeline-title">Founder & AI Integration Specialist</div>
+                    <div class="timeline-company">Independent Consulting</div>
+                    <div class="timeline-description">
+                        Leading AI integration initiatives for forward-thinking organizations seeking to harness artificial intelligence for competitive advantage. Specializing in practical AI implementations that deliver measurable business results, including process automation, intelligent data analysis, and customer experience enhancement. Leveraging extensive cloud infrastructure and business scaling experience to ensure AI solutions are robust, scalable, and aligned with business objectives.
+                    </div>
+                </div>
+                
+                <div class="timeline-item">
+                    <div class="timeline-date">July 2023 - 2024</div>
+                    <div class="timeline-title">Principal Cloud Engineer</div>
+                    <div class="timeline-company">Zynga</div>
+                    <div class="timeline-description">
+                        Rapidly promoted from Senior to Principal Cloud Engineer, consistently rated "Outperforming." Drove significant advancements in cloud automation, security, and infrastructure optimization for Zynga's large-scale global gaming environment. Spearheaded extensive cloud automation using Cloud Custodian, Python/Bash scripting, and tools like Zapier. Led AWS Transit Gateway migration project and owned critical AWS China infrastructure components. Key member of Network Security Strike Team implementing wide-reaching security changes across all AWS accounts.
+                    </div>
+                </div>
+                
+                <div class="timeline-item">
+                    <div class="timeline-date">September 2019 - July 2023</div>
+                    <div class="timeline-title">Co-Founder & CEO</div>
+                    <div class="timeline-company">Simple Helix</div>
+                    <div class="timeline-description">
+                        Co-founded and led Simple Helix, scaling from a solo venture to a thriving organization of 100+ employees with $20 million in annual revenue. Specialized in data center solutions, e-commerce platforms, and cybersecurity services. Spearheaded strategic vision and execution, recruited and mentored high-performing teams, and architected robust infrastructure for both on-premise and cloud environments. Established company-wide compliance programs and risk management frameworks.
+                    </div>
+                </div>
+                
+                <div class="timeline-item">
+                    <div class="timeline-date">September 2006 - January 2019</div>
+                    <div class="timeline-title">Technical Leadership Roles</div>
+                    <div class="timeline-company">Simple Helix</div>
+                    <div class="timeline-description">
+                        Built foundational technical expertise through progressive leadership roles in IT infrastructure, systems administration, and network engineering. Developed deep specialization in enterprise solutions, data center management, and business technology strategy that would later drive the company's growth and success.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="achievements" class="section">
+        <div class="container">
+            <h2>Key Achievements</h2>
+            <div class="achievements">
+                <div class="achievement-card">
+                    <div class="achievement-number">$20M</div>
+                    <div class="achievement-text">Annual Revenue Achieved as CEO</div>
+                </div>
+                <div class="achievement-card">
+                    <div class="achievement-number">100+</div>
+                    <div class="achievement-text">Team Members Led & Mentored</div>
+                </div>
+                <div class="achievement-card">
+                    <div class="achievement-number">100+</div>
+                    <div class="achievement-text">Hours of Advanced Technical Training</div>
+                </div>
+                <div class="achievement-card">
+                    <div class="achievement-number">17+</div>
+                    <div class="achievement-text">Years of Technical Leadership</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta-section">
+        <div class="container">
+            <h2 style="margin-bottom: 20px;">Ready to Transform Your Business with AI?</h2>
+            <p style="font-size: 1.2em; margin-bottom: 30px;">Let's discuss how AI integration can drive efficiency, innovation, and growth for your organization.</p>
+            <a href="#contact" class="cta-button">Start Your AI Journey</a>
+        </div>
+    </section>
+
+    <section id="contact" class="section">
+        <div class="container">
+            <h2>Contact Information</h2>
+            <div style="max-width: 600px; margin: 0 auto; text-align: center;">
+                <p style="font-size: 1.1em; margin-bottom: 30px; color: #555;">
+                    I'm actively seeking new clients for AI integration projects. Whether you're looking to automate business processes, enhance customer experiences, or unlock insights from your data, I can help you implement AI solutions that deliver real business value. Let's explore how we can transform your organization together.
+                </p>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 30px; margin-top: 40px;">
+                    <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.1);">
+                        <h4 style="color: #2c3e50; margin-bottom: 15px;">Email</h4>
+                        <p style="color: #555;">steve@steveshickles.com</p>
+                    </div>
+                    
+                    <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.1);">
+                        <h4 style="color: #2c3e50; margin-bottom: 15px;">Location</h4>
+                        <p style="color: #555;">Austin, Texas<br>Serving Clients Nationwide</p>
+                    </div>
+                    
+                    <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.1);">
+                        <h4 style="color: #2c3e50; margin-bottom: 15px;">LinkedIn</h4>
+                        <p style="color: #555;"><a href="https://www.linkedin.com/in/steveshickles/" style="color: #3498db; text-decoration: none;">linkedin.com/in/steveshickles</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Steve Shickles. All rights reserved.</p>
+            <p style="margin-top: 10px; font-size: 0.9em; opacity: 0.8;">
+                AI Integration Specialist helping organizations harness artificial intelligence for competitive advantage.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Add scroll effect to navigation
+        window.addEventListener('scroll', function() {
+            const nav = document.querySelector('nav');
+            if (window.scrollY > 100) {
+                nav.style.background = 'rgba(52, 73, 94, 0.95)';
+                nav.style.backdropFilter = 'blur(10px)';
+            } else {
+                nav.style.background = '#34495e';
+                nav.style.backdropFilter = 'none';
+            }
+        });
+
+        // Add animation on scroll for timeline items
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.timeline-item, .skill-category, .achievement-card').forEach(item => {
+            item.style.opacity = '0';
+            item.style.transform = 'translateY(30px)';
+            item.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(item);
+        });
+    </script>
+</body>
+</html>
