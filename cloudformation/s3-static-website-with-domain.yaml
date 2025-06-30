@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 Static Website Hosting with Custom Domain for Steve Shickles Personal Website'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Deployment environment
+    AllowedValues:
+      - dev
+      - prod
+    Default: dev
+  
+  DomainName:
+    Type: String
+    Description: Domain name for the website
+    Default: steveshickles.com
+  
+  CertificateArn:
+    Type: String
+    Description: ARN of the ACM certificate (must be in us-east-1)
+    Default: ''
+  
+  HostedZoneId:
+    Type: String
+    Description: Route 53 Hosted Zone ID
+    Default: ''
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, prod]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, '']]
+  CreateDNS: !And [!Condition HasCertificate, !Condition HasHostedZone]
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If
+        - IsProduction
+        - !Sub '${DomainName}'
+        - !Sub 'dev.${DomainName}'
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: SteveShicklesWebsite
+
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource: !Sub '${S3Bucket.Arn}/*'
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt S3Bucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        Enabled: true
+        DefaultRootObject: index.html
+        Comment: !Sub 'CloudFront Distribution for ${Environment} environment'
+        Aliases: !If
+          - HasCertificate
+          - !If
+            - IsProduction
+            - 
+              - !Ref DomainName
+              - !Sub 'www.${DomainName}'
+            - 
+              - !Sub 'dev.${DomainName}'
+          - !Ref AWS::NoValue
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
+        PriceClass: PriceClass_100
+        ViewerCertificate: !If
+          - HasCertificate
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: /error.html
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /error.html
+        Tags:
+          - Key: Environment
+            Value: !Ref Environment
+          - Key: Project
+            Value: SteveShicklesWebsite
+
+  # Route 53 DNS Records (only created if certificate and hosted zone are provided)
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: CreateDNS
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !If
+        - IsProduction
+        - !Ref DomainName
+        - !Sub 'dev.${DomainName}'
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront Hosted Zone ID
+        EvaluateTargetHealth: false
+
+  # WWW record for production only
+  WWWRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: !And
+      - CreateDNS
+      - IsProduction
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub 'www.${DomainName}'
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront Hosted Zone ID
+        EvaluateTargetHealth: false
+
+Outputs:
+  WebsiteURL:
+    Description: URL of the S3 website
+    Value: !GetAtt S3Bucket.WebsiteURL
+    Export:
+      Name: !Sub '${AWS::StackName}-WebsiteURL'
+  
+  S3BucketName:
+    Description: Name of the S3 bucket
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+  
+  CloudFrontURL:
+    Description: CloudFront Distribution URL
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-CloudFrontURL'
+  
+  CloudFrontDistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-CloudFrontDistributionId'
+  
+  CustomDomainURL:
+    Description: Custom Domain URL
+    Value: !If
+      - HasCertificate
+      - !If
+        - IsProduction
+        - !Sub 'https://${DomainName}'
+        - !Sub 'https://dev.${DomainName}'
+      - 'No custom domain configured'
+    Export:
+      Name: !Sub '${AWS::StackName}-CustomDomainURL'
