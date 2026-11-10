@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+for script in scripts/wt.sh scripts/new-repo .githooks/pre-push apply-ruleset.sh scripts/lint-shell; do
+  bash -n "$script"
+done

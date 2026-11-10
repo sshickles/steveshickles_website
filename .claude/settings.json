@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(coderabbit review:*)",
+      "Bash(./scripts/setup *)",
+      "Bash(./scripts/check)",
+      "Bash(./scripts/test)",
+      "Bash(./scripts/review *)",
+      "Bash(gh pr merge * --auto --squash)",
+      "Bash(gh pr merge * --disable-auto)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(git push * +*)",
+      "Bash(git push * --no-verify*)",
+      "Bash(git push --no-verify*)",
+      "Bash(git * push --no-verify*)",
+      "Bash(git * push * --no-verify*)",
+      "Bash(gh pr merge*--admin*)",
+      "Bash(gh * pr merge*--admin*)",
+      "Bash(git push * dev*)",
+      "Bash(git push * *:dev*)",
+      "Bash(git push * *:refs/heads/dev*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push +*)",
+      "Bash(git * push *--force*)",
+      "Bash(git * push * -f*)",
+      "Bash(git * push * *:dev*)",
+      "Bash(git * push * *:refs/heads/dev*)",
+      "Bash(git * push * dev*)"
+    ]
+  }
+}

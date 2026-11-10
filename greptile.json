@@ -1,0 +1,38 @@
+{
+  "$comment": "Enable GitHub native squash auto-merge after required checks and current-head Greptile 5/5 approval. Verify dashboard confidence and repository-scoped auto-approval separately.",
+  "strictness": 2,
+  "commentTypes": [
+    "logic"
+  ],
+  "statusCheck": true,
+  "shouldUpdateDescription": false,
+  "hideFooter": true,
+  "includeConfidenceScore": true,
+  "triggerOnUpdates": true,
+  "triggerOnDrafts": false,
+  "ignorePatterns": "**/_generated/**\n.next/**\n**/*.min.js\n**/*.min.mjs",
+  "customContext": {
+    "files": [
+      {
+        "path": "AGENTS.md",
+        "description": "Project standards: commands, environments, conventions, what not to touch, definition of done"
+      }
+    ]
+  },
+  "autoReview": [
+    "open",
+    "push",
+    "rebase"
+  ],
+  "labels": [],
+  "disabledLabels": [],
+  "autoApprove": {
+    "enabled": true,
+    "riskCeiling": "critical",
+    "filters": {
+      "includeRepositories": [
+        "sshickles/steveshickles_website"
+      ]
+    }
+  }
+}

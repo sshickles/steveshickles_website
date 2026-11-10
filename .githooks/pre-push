@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+# Validation may use foreign Git fixtures. Git's hook metadata must not follow it.
+git_variables="$(git rev-parse --local-env-vars)"
+while IFS= read -r git_variable; do unset "$git_variable"; done <<< "$git_variables"
+exec python3 -B "$root/scripts/pre_push.py" "$@"

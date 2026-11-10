@@ -1,0 +1,27 @@
+name: CI
+on:
+  pull_request:
+  push:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  checks:
+    name: ${{ (github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch) && 'checks' || 'Skip non-default push' }}
+    if: github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v4
+        with:
+          version: 2026.8.5
+          install: false
+          env: false
+          export_path: false
+      - run: ./scripts/setup
+      - run: ./scripts/check

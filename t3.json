@@ -1,0 +1,39 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "defaultThreadEnvMode": "worktree",
+  "scripts": [
+    {
+      "name": "Setup worktree",
+      "command": "./scripts/setup",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false,
+      "runOnSettle": false,
+      "stopOnSettle": false
+    },
+    {
+      "name": "Check",
+      "command": "./scripts/check",
+      "icon": "lint",
+      "runOnWorktreeCreate": false,
+      "runOnSettle": false,
+      "stopOnSettle": false
+    },
+    {
+      "name": "Test",
+      "command": "./scripts/test",
+      "icon": "test",
+      "runOnWorktreeCreate": false,
+      "runOnSettle": false,
+      "stopOnSettle": false
+    },
+    {
+      "name": "Review",
+      "command": "./scripts/review",
+      "icon": "debug",
+      "runOnWorktreeCreate": false,
+      "runOnSettle": false,
+      "stopOnSettle": false
+    }
+  ]
+}
