@@ -5,8 +5,10 @@ import os
 from pathlib import Path
 import re
 import sys
+import subprocess
 
 from development import ROOT, read_config, run
+from commands import clean_git_environment
 
 
 def base(config):
@@ -15,7 +17,7 @@ def base(config):
     ref = f"refs/remotes/{remote}/{branch}"
     run(["git", "fetch", remote, f"+refs/heads/{branch}:{ref}"])
     run(["git", "rev-parse", "--verify", f"{ref}^{{commit}}"])
-    return f"{remote}/{branch}"
+    return ref
 
 
 def main():
@@ -24,6 +26,15 @@ def main():
     parser.add_argument("--base", action="store_true", help="Fetch and print configured base without creating a worktree")
     args = parser.parse_args()
     try:
+        clean_git_environment(preserve_transport=True)
+        caller = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
+                                capture_output=True, text=True)
+        if caller.returncode == 0 and Path(caller.stdout.strip()).resolve() != ROOT:
+            raise ValueError("Worktree helper belongs to another repository; run this checkout's own scripts/wt.sh")
+        if caller.returncode:
+            directory = subprocess.run(['git', 'rev-parse', '--git-dir'], capture_output=True)
+            if directory.returncode == 0:
+                raise ValueError('Run the worktree helper from its own checkout, not a bare repository or Git directory')
         config = read_config(ROOT / ".repo-standard.json")
         if args.base:
             if args.branch:

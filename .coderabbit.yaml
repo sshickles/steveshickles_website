@@ -14,6 +14,36 @@ reviews:
   collapse_walkthrough: true
 
   path_filters:
+    # repo-standard: managed-path-filters
+    - "!.coderabbit.yaml"
+    - "!.githooks/pre-push"
+    - "!.repo-standard-source.json"
+    - "!CLAUDE.md"
+    - "!apply-ruleset.sh"
+    - "!docs/agents/policy.md"
+    - "!docs/agents/review-checklist.md"
+    - "!docs/halo.md"
+    - "!docs/setup.md"
+    - "!docs/t3-compatibility.md"
+    - "!greptile.json"
+    - "!ruleset.json"
+    - "!scripts/changed_tests.py"
+    - "!scripts/check"
+    - "!scripts/commands.py"
+    - "!scripts/development.py"
+    - "!scripts/halo.py"
+    - "!scripts/install-hooks.mjs"
+    - "!scripts/lint-shell"
+    - "!scripts/new-repo"
+    - "!scripts/pre_push.py"
+    - "!scripts/repository.py"
+    - "!scripts/review"
+    - "!scripts/setup"
+    - "!scripts/standard.py"
+    - "!scripts/t3_actions.py"
+    - "!scripts/test"
+    - "!scripts/worktree.py"
+    - "!scripts/wt.sh"
     - "!**/node_modules/**"
     - "!**/dist/**"
     - "!**/build/**"
@@ -32,6 +62,13 @@ reviews:
         data integrity, customer-data exposure, race conditions, broken
         contracts, missing validation, missing tests for changed behaviour.
         Skip style, formatting, naming preferences and speculative refactors.
+        Owner rollout requirement 12 excludes the complete canonical-managed manifest
+        from destination reviews, including validators and the provenance lock.
+        Those files remain fully reviewed in this canonical repository. The selected
+        canonical revision is an operator-approved trust anchor, not independent
+        authorization of replacement validators. Do not re-include downstream copies.
+        Verify exact exclusions, destination-only scoping, integrity validation and
+        continued review of repository-owned files.
 
   auto_review:
     enabled: false

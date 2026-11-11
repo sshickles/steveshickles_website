@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Render, validate and audit the canonical repository standard."""
 import argparse
+import copy
+import difflib
+import fnmatch
 import hashlib
 from datetime import datetime, timezone
 import json
@@ -76,6 +79,23 @@ def list_rules(repo):
     return [item for page in pages for item in page]
 
 
+def targets_default(pattern, branch):
+    if pattern in ('~DEFAULT_BRANCH', '~ALL'):
+        return True
+    # GitHub uses pathname globs: ordinary stars cannot cross a slash.
+    parts, names = pattern.split('/'), ('refs/heads/' + branch).split('/')
+    def match(patterns, segments):
+        if not patterns:
+            return not segments
+        # Ruby FNM_PATHNAME makes only **/ recursive; terminal ** is one component.
+        # https://docs.ruby-lang.org/en/master/file/filename_matching_md.html
+        if patterns[0] == '**' and len(patterns) > 1:
+            return any(match(patterns[1:], segments[i:]) for i in range(len(segments) + 1))
+        return bool(segments and fnmatch.fnmatchcase(segments[0], patterns[0])
+                    and match(patterns[1:], segments[1:]))
+    return match(parts, names)
+
+
 def inspect(repo, policy=None):
     info = api(f"repos/{repo}")
     if info.get("archived") or info.get("disabled"):
@@ -86,16 +106,45 @@ def inspect(repo, policy=None):
         raise RuntimeError("Configured baseBranch differs from GitHub default branch; reconcile explicitly before configuring protections")
     desired = desired_rules(policy)
     rules = list_rules(repo)
-    owned = [r for r in rules if r["name"] == RULESET_NAME and r.get("source_type") == "Repository"
-             and r.get("source", "").lower() == repo.lower()]
-    if len(owned) > 1:
-        raise RuntimeError("Multiple rulesets have the standard's name; reconcile them manually")
-    current = api(f"repos/{repo}/rulesets/{owned[0]['id']}") if owned else None
-    if current and not rules_match(current, desired):
-        raise RuntimeError("The standard's ruleset has different settings. Review it manually; nothing was overwritten.")
-    other = [r for r in rules if r not in owned]
+    candidates = []
+    for rule in rules:
+        if rule.get('source_type') != 'Repository' or rule.get('source', '').lower() != repo.lower():
+            continue
+        detail = api(f"repos/{repo}/rulesets/{rule['id']}")
+        if not isinstance(detail, dict) or not detail:
+            raise RuntimeError(f"Empty or invalid response for ruleset {rule['id']}")
+        refs = (detail.get('conditions') or {}).get('ref_name') or {}
+        applies = (detail.get('target') == 'branch'
+                   and any(targets_default(p, info['default_branch']) for p in refs.get('include', []))
+                   and not any(targets_default(p, info['default_branch']) for p in refs.get('exclude', [])))
+        if applies:
+            candidates.append(detail)
+    if len(candidates) > 1:
+        raise RuntimeError('Multiple default-branch rulesets apply; reconcile these IDs manually: '
+                           + ', '.join(str(r['id']) for r in candidates))
+    current = candidates[0] if candidates else None
+    if current:
+        desired = preserve_unmanaged(current, desired)
+    other = [r for r in rules if not current or r['id'] != current['id']]
     legacy = api(f"repos/{repo}/branches/{quote(info['default_branch'], safe='')}/protection", missing_ok=True)
     return info, desired, current, other, legacy
+
+
+def preserve_unmanaged(current, desired):
+    def overlay(old, new):
+        result = copy.deepcopy(old or {})
+        for key, value in new.items():
+            result[key] = overlay(result.get(key, {}), value) if isinstance(value, dict) else copy.deepcopy(value)
+        return result
+    result = copy.deepcopy(desired)
+    result['name'] = current['name']
+    result['bypass_actors'] = copy.deepcopy(current.get('bypass_actors', []))
+    result['conditions'] = copy.deepcopy(current.get('conditions') or desired['conditions'])
+    managed = {r['type']: r for r in desired['rules']}
+    result['rules'] = [overlay(r, managed.pop(r['type'])) if r['type'] in managed else copy.deepcopy(r)
+                       for r in current.get('rules', []) if r['type'] != 'required_deployments']
+    result['rules'].extend(copy.deepcopy(list(managed.values())))
+    return result
 
 
 def approval_digest(repo, desired, settings, observed, create_ruleset, other=(), legacy=None):
@@ -114,11 +163,15 @@ def configure(repo, *, apply=False, backup_dir=None, policy=None, approval_refer
     print("Required checks: " + ", ".join(c["context"] for c in checks["parameters"]["required_status_checks"]))
     settings = {"allow_auto_merge": True, "allow_squash_merge": True,
                 "delete_branch_on_merge": True}
+    before = {k: current[k] for k in desired if current and k in current}
+    print('Ruleset diff:\n' + ''.join(difflib.unified_diff(
+        json.dumps(before, indent=2).splitlines(True), json.dumps(desired, indent=2).splitlines(True),
+        fromfile='live ruleset', tofile='proposed ruleset')))
     print("Proposed ruleset:\n" + json.dumps(desired, indent=2))
     print("Proposed repository settings:\n" + json.dumps(settings, indent=2))
     observed = {key: info.get(key) for key in settings}
     print("Observed repository settings:\n" + json.dumps(observed, indent=2))
-    print("Ruleset action: " + ("create" if current is None else "already matches"))
+    print("Ruleset action: " + ("create" if current is None else "already matches" if rules_match(current, desired) else "update in place (preview only; reconcile manually)"))
     print('Observed additional and inherited rulesets:\n' + json.dumps(other, indent=2))
     print('Observed legacy branch protection:\n' + json.dumps(legacy, indent=2))
     digest = approval_digest(repo, desired, settings, observed, current is None, other, legacy)
@@ -126,8 +179,13 @@ def configure(repo, *, apply=False, backup_dir=None, policy=None, approval_refer
     for rule in other:
         print(f"Preserving additional ruleset: {rule['name']} ({rule.get('source_type')})")
     if not apply:
-        print("Preview only. Run with --apply to configure GitHub.")
+        if current and not rules_match(current, desired):
+            print("Preview only. Reconcile the existing ruleset manually; --apply will refuse this update.")
+        else:
+            print("Preview only. Run with --apply only after owner approval to configure GitHub.")
         return
+    if current and not rules_match(current, desired):
+        raise RuntimeError('Existing ruleset update is preview only; nothing was overwritten')
     if not approval_reference or not re.fullmatch(r'\S+#sha256:' + digest, approval_reference):
         raise RuntimeError("Approval reference must name owner approval and end with #sha256: plus the exact preview digest; obtain owner approval first")
     backup_dir = Path(backup_dir or Path.home() / ".local/state/repo-standard")
@@ -150,7 +208,7 @@ def configure(repo, *, apply=False, backup_dir=None, policy=None, approval_refer
         api(f"repos/{repo}/rulesets", "POST", desired)
     api(f"repos/{repo}", "PATCH", settings)
     updated, _, verified, _, _ = inspect(repo, policy)
-    if not verified or any(updated.get(k) != v for k, v in settings.items()):
+    if not verified or not rules_match(verified, desired) or any(updated.get(k) != v for k, v in settings.items()):
         raise RuntimeError("GitHub did not retain the requested configuration; inspect the repository settings")
     print(f"GitHub configuration verified. Previous settings saved to {backup}")
     print("Integration setup is still required. Follow docs/setup.md and verify one real PR.")
@@ -209,7 +267,8 @@ def stamp(revision, apply=False):
     print('Canonical source: ' + head)
     print('Provenance plan: ' + (', '.join(changed) or 'already current'))
     if apply:
-        for name, content in changed.items():
+        for name in sorted(changed, key=lambda name: name == LOCK):
+            content = changed[name]
             target = target_path(ROOT, name)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content)
@@ -229,7 +288,7 @@ def initialization(path, data, policy):
         content = json.loads(package.read_text())
         content['name'] = policy['repository'].split('/')[1].lower()
         output['package.json'] = json.dumps(content, indent=2) + '\n'
-    return output
+    return dict(sorted(output.items(), key=lambda item: item[0] == LOCK))
 
 
 def new_repo(args):
