@@ -10,7 +10,7 @@
   "includeConfidenceScore": true,
   "triggerOnUpdates": true,
   "triggerOnDrafts": false,
-  "ignorePatterns": "**/_generated/**\n.next/**\n**/*.min.js\n**/*.min.mjs",
+  "ignorePatterns": "**/_generated/**\n.next/**\n**/*.min.js\n**/*.min.mjs\n/.coderabbit.yaml\n/.githooks/pre-push\n/.repo-standard-source.json\n/CLAUDE.md\n/apply-ruleset.sh\n/docs/agents/policy.md\n/docs/agents/review-checklist.md\n/docs/halo.md\n/docs/setup.md\n/docs/t3-compatibility.md\n/greptile.json\n/ruleset.json\n/scripts/changed_tests.py\n/scripts/check\n/scripts/commands.py\n/scripts/development.py\n/scripts/halo.py\n/scripts/install-hooks.mjs\n/scripts/lint-shell\n/scripts/new-repo\n/scripts/pre_push.py\n/scripts/repository.py\n/scripts/review\n/scripts/setup\n/scripts/standard.py\n/scripts/t3_actions.py\n/scripts/test\n/scripts/worktree.py\n/scripts/wt.sh",
   "customContext": {
     "files": [
       {

@@ -94,14 +94,19 @@ without printing unrelated fields or secrets. On RTX6000, repo-standard has:
   bundled schema supplies an empty array).
 - `projectSettingsFolded: true` and a project `defaultProjectScripts: []`
   override. The legacy script override is also an empty array.
-- Supported project reads return `scripts: []` and no project mode override.
+- Before the live update, supported project reads returned `scripts: []` and no project mode override.
 - No script keybindings in the keybindings file. No effective creation or
   settle action exists, because the winning action list is empty.
 
-The empty effective list is derived from source and the observed settings,
-not from a live creation test. This host is pending saved-action rollout.
-Other hosts remain inaccessible to this local audit until separately inspected.
-No host settings or databases were changed.
+Live RTX6000 evidence on 2026-11-10: the supported `t3_project_update` tool
+saved all four canonical actions to `project.scripts`. With
+`projectSettingsFolded: true`, the server's `ProjectSetupScriptRunner` uses the
+bundled `resolveProjectScripts`, which returns the empty project
+`defaultProjectScripts` override without consulting `project.scripts`. A new
+worktree thread (`chore/t3-pilot-setup`) ran no setup. Effective saved actions
+require Settings UI replacement of the project action override; no supported
+tool or CLI exposes that override. Live failure/resume tests were not run by
+owner decision. Other hosts were not tested.
 
 ## Generation, audit and rollout
 
@@ -109,8 +114,8 @@ No host settings or databases were changed.
 Unrelated actions and top-level fields survive. Exact canonical duplicates
 are collapsed. A canonical name with a different command, competing creation
 action, extra local action fields, or canonical action with settle behavior
-stops generation with a
-manual integration message. Fold repository setup behavior into the configured
+reports a manual integration conflict with an exact proposed diff. Apply refuses
+to overwrite it. Fold repository setup behavior into the configured
 finite setup steps beneath `./scripts/setup`, or preserve it as an unrelated
 manual action, then rerun. The generator never drops that behavior silently.
 
@@ -119,23 +124,11 @@ before integrity validation. Aligned means the repository definition matches;
 pending means missing or different actions or competing creation flags;
 inaccessible means unreadable or malformed input. Host settings inventory is
 unsupported in the unattended CLI audit and explicitly pending manual review.
-The supported tools and settings UI allow a separate host pilot inventory;
+The supported tools and settings UI allow a separate host inventory;
 repository alignment is never reported as effective host alignment. Drift
 still fails integrity validation; a canonical upgrade remains informational.
 
-After wrapper checks and review pass, the owner can pilot through the supported
-Settings UI, selecting the correct environment and registered repository on
-each host. Inspect defaults, project overrides, legacy overrides, saved scripts,
-settle flags and keybindings first. Import or edit the winning action list,
-retaining useful unrelated entries and local IDs. Do not overwrite a whole
-settings file. An empty override must be deliberately replaced or cleared;
-importing a shadowed list does not activate it.
-
-On an intentional pilot task, verify setup cwd is the new checkout, setup
-finishes before the first turn, and doctor passes. Exercise a controlled setup
-failure and confirm the run remains blocked until repaired. Resume the same
-task and verify setup is not repeated; also test checkout recreation separately.
-Waiting, failure and resume behavior remain live pilot requirements, inferred
-from source paths rather than exercised here. Then repeat supported inventory
-and saved-action switching per host, checking version and effective precedence
-after every upgrade. No pilot or saved-action switch was performed in this PR.
+Use the supported Settings UI to replace the effective project action override,
+retaining unrelated actions and local IDs. Importing a shadowed saved list does
+not activate it. No further pilots or lifecycle testing are required by the
+owner for this rollout.

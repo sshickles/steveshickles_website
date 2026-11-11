@@ -1,8 +1,8 @@
 <!-- Generated. Do not edit. -->
 Canonical repository: sshickles/repo-standard
-Canonical revision: 99699eafc33e84a23d07930048784c9ec6434dc9
+Canonical revision: e360388e2628a0b6d93e4fc3fbc608c470dbda93
 Canonical source: policy/policy.md
-SHA-256: 8ca275bc168ed69739e78ab0b712456dd9c9c891271c23fdcd7b084e0e390f57
+SHA-256: bef29603be51b34f60f23933f99e98a4923be2a1e63f12b34a4e58dc6085a510
 
 # Shared engineering policy
 
@@ -112,7 +112,9 @@ never deploy as a side effect. Production labels do not create a separate
 setup approval gate; all initializers must be idempotent and non-deploying.
 
 Check runs all required locally executable validation, including tests and
-policy integrity. Use it in CI and pre-push. External Greptile checks remain
+policy integrity. CI calls it without arguments and keeps the full suite as
+the required merge gate. Pre-push uses its hook mode for fast checks and affected
+tests, with conservative full-suite fallbacks. External Greptile checks remain
 separate. Test runs the documented suite. Review uses the configured local
 CodeRabbit runner or clearly directs an independent review fallback. It must
 exit nonzero on unavailability or findings, never silently skip review.
@@ -122,12 +124,18 @@ exit nonzero on unavailability or findings, never silently skip review.
 Run documented checks and add meaningful behavior tests for changes where
 practical. Investigate failures and retry with evidence of flakiness; fix
 in-scope failures or report the blocker. Never bypass hooks or weaken checks
-to make a push succeed. For the known five-second Vitest timeout on RTX6000,
-retry with `VITEST_MAX_WORKERS=16` when relevant; do not apply this everywhere.
+to make a push succeed. Hook-mode Vitest uses load-aware workers and a longer
+test timeout, with explicit environment overrides. Full checks and CI do not
+receive these hook limits.
 
-Commit and install a pre-push hook that runs `./scripts/check`, preserves
+Commit and install a pre-push hook that runs `./scripts/check --pre-push`, preserves
 existing responsibilities and rejects the protected default branch by its
 remote destination ref from stdin, regardless of the local branch name. Run checks for ref deletions too.
+Hook mode runs policy integrity, lint, type checking and configured non-test
+validation, then affected tests from the pushed commit's merge-base with the
+origin default branch. Missing history, shared infrastructure changes and stacks
+without an affected-test mapping run the full test command. Repository-owned
+pre-push checks still run after the common checks.
 
 Prefer `~/.local/bin/cr-auto` or the appropriate configured
 `cr-as <bbl|pp|rsp|ss|wca>` profile. Discover equivalent supported host setup.

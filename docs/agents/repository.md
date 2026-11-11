@@ -45,10 +45,21 @@ branch; use T3's managed worktree workflow for new isolated tasks. Committed
 no application test suite. `./scripts/test` honestly runs repository policy
 validation; it does not claim browser, HTML rendering or application coverage.
 This minimal suite suits a static site and adds no artificial application tests.
-The shared pre-push hook rejects pushes to `dev` and runs the same check. There
+The shared pre-push hook rejects pushes to `dev` and runs fast validation plus
+affected-test selection against the merge base with `origin/dev`. This custom
+policy-validation suite has no supported affected-test mapping, so hook mode
+retains the full `testCommand`. No extra shared-infrastructure globs are needed.
+`./scripts/check` without arguments and CI still run the full suite. There
 were no existing repository hooks or setup commands to migrate. Future custom
 hook responsibilities belong in executable `.githooks/pre-push.d/` entries.
 Use the shared review checklist and fix valid local and PR review findings.
+
+Apply canonical updates from the reviewed source checkout on a clean task branch:
+
+```sh
+python3 /src/sshickles/repo-standard/scripts/repository.py update "$PWD" \
+  --source /src/sshickles/repo-standard --revision <approved-sha> --apply
+```
 
 ## Deployment and recovery
 

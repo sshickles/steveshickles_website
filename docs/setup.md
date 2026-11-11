@@ -21,6 +21,17 @@ another project in public configuration.
 lockfile. Setup supports pnpm frozen installs, npm ci and Yarn 2+ immutable
 installs. Custom non-Node stacks declare `development.dependencies` with a
 committed `lockfile`, a locked `install` argv list and generated `artifacts`.
+For repositories with no dependencies, set `development.dependencies` to
+`{"mode": "none"}`. Setup and doctor then need no package manifest, lockfile or
+dependency artifacts. Declared Node package dependencies conflict with this mode.
+For custom adoption without an existing `mise.toml`, declare exact tool versions in
+`development.tools`, for example `{"python": "3.13.5"}`. The generated file contains
+only those tools; an empty object produces an empty tools table. Existing mise
+files are preserved; `development.tools` is an initial rendering input, not a
+second source of pins. Even no-dependencies mode requires `mise.toml` (an empty
+`[tools]` table is valid). The exact mise pin is the source of truth, not a floating
+CI version such as `node-version: "24"`. Canonical CI installs mise and calls
+setup, which reads those pins and installs hooks before running check.
 Review those stack-specific commands before use. `development.requiredFiles`
 lists ignored files pulled from the service's authoritative store. Setup refuses
 missing artifacts before dependent commands. Reviewed, finite `localCommands`
@@ -72,7 +83,16 @@ and integration setup, then use one rollout PR and native squash auto-merge.
 Missing live settings or review integration are pending dependencies, not gates
 to bypass. Verify that server-side protections enforce required checks and
 current-head Greptile 5/5 approval before enabling auto-merge. Leave the PR open
-with auto-merge off if those gates are not yet enforced. The optional T3 adapter is documented in
+with auto-merge off if those gates are not yet enforced. A repository with no
+required status checks can merge on approval alone once auto-merge is enabled.
+Its adoption PR relies on Greptile approval until required contexts are configured;
+preview recommends `checks` and `Greptile Review` (integration 867647). Keep both
+explicit in `ciChecks`; validation rejects incorrect bindings or drift from the
+rendered ruleset. This list owns the required status contexts and their integration
+bindings. Preview shows removal of unlisted contexts; add any live CI contexts
+that must remain to `ciChecks` before approving the proposal. Existing ruleset
+differences require manual reconciliation, and `--apply` refuses them.
+The optional T3 adapter is documented in
 [t3-compatibility.md](t3-compatibility.md). A saved creation action must be imported
 and updated explicitly; committing `t3.json` does not activate saved actions.
 
@@ -96,7 +116,18 @@ hook manager blindly. Keep stack setup underneath the four command interfaces,
 run check in its real CI job and preserve other responsibilities. For a custom
 stack, adjust validation, test command and pinned tooling deliberately before
 finishing adoption. The test entry point runs the pinned `testCommand`; set it to the
-destination suite. Check always runs test in addition to configured validation.
+destination suite. Check without arguments always runs test in addition to configured validation.
+
+### Preserve an existing CI job
+
+Set `existingCI` to `{"workflow": ".github/workflows/build.yml", "job": "verify", "context": "checks"}`
+and retain `checks` in `ciChecks`. Adoption omits the canonical CI workflow and
+preserves the selected file. Validation requires the selected job to have that
+name (or job ID if unnamed) and a standalone `- run: ./scripts/check` step.
+Use conventional block YAML with two-space job and step indentation as in the
+canonical workflow. Dynamic names, aliases and reusable jobs require manual
+integration. Keep setup and pinned tools in the existing job. This check verifies
+the command contract, not GitHub trigger coverage or successful execution.
 
 ### Preserve repository pre-push checks
 
@@ -107,7 +138,8 @@ with the executable bit set. Setup still refuses a different hook manager until
 you integrate its responsibilities and explicitly select `.githooks`.
 
 The shared hook first rejects every default-branch destination, including
-deletions, then runs `./scripts/check`. After that succeeds, it runs every entry
+deletions, then runs `./scripts/check --pre-push` with the pushed commit IDs.
+After that succeeds, it runs every entry
 in `.githooks/pre-push.d/` in filename order from the checkout root. Each entry
 receives the original remote name and URL as arguments and its own complete,
 unchanged copy of the pushed ref lines on stdin. This includes branch deletions
@@ -121,6 +153,132 @@ The repository.md template starts with no exceptions. Fill its seven sections
 with real architecture, commands, ownership, runtime, verification and recovery
 information. Remove superseded entry points and duplicate policy prose after
 migrating callers. Thin instruction adapters point to AGENTS.md.
+
+### Configure affected tests for pre-push
+
+CI keeps calling `./scripts/check` without arguments. It runs the complete
+`testCommand` and every `validation` command. The required `checks` status stays
+the merge gate. `./scripts/test` also keeps running the complete suite.
+
+Hook mode runs integrity validation and all configured `validation` commands,
+then selects affected tests. Keep lint, type checking, build and other non-test
+checks in `validation`. A command identical to `testCommand` is omitted only in
+hook mode to avoid running the suite twice. Split combined wrappers such as
+`lint && test` into separate commands when adopting affected tests.
+
+Set the optional `development.changedTestCommand` object in `.repo-standard.json`:
+
+```json
+{
+  "kind": "vitest",
+  "command": ["pnpm", "exec", "vitest"]
+}
+```
+
+For Vitest, `command` is a direct runner ending in `vitest`. `testCommand` must
+start with that runner plus `run`, for example `["pnpm", "exec", "vitest", "run"]`.
+Selection invokes `vitest related <files> --run --passWithNoTests`.
+Positional suite filters such as `tests/unit` retain the full command. Options
+with separate values also fall back because their values cannot safely be
+distinguished from suite filters. Use `--option=value`, such as `--project=unit`,
+when enabling related selection with options. It passes only
+existing changed JavaScript and TypeScript source or test files. Related runs
+disable coverage collection so global coverage thresholds cannot reject a partial
+suite. Full checks and full-suite fallbacks keep coverage enforcement. No relevant
+files means no tests when the changes contain only conventional documentation.
+Unknown inputs such as JSON fixtures, runtime assets and templates trigger the
+full suite in both mappings. Documentation-only paths are root `README*`,
+`CHANGELOG*`, `LICENSE*`, `COPYING*`, `AUTHORS*`, `CONTRIBUTING*`, and `docs/**`.
+Add any documentation consumed at runtime to `sharedInfrastructureGlobs`, which
+takes precedence over this skip list. Deleted source or test files trigger the full suite.
+
+Vitest related selection follows static imports. Before enabling the mapping,
+add source paths loaded through computed imports such as `import(filepath)`,
+filesystem reads, or other dependencies outside Vitest's graph to
+`sharedInfrastructureGlobs`. For example, `["src/plugins/**", "fixtures/**"]`
+forces full tests when those inputs change. The template cannot infer these
+application-specific paths. CI remains the complete-suite gate.
+
+For pytest, use `{"kind": "pytest", "command": ["python3", "-m", "pytest"]}`.
+The mapping's `command` must equal `testCommand`, including marker, plugin and
+configuration options. Omit explicit test targets from that command to let
+pytest discover the full suite normally and accept selected files in hook mode.
+Changed `test_*.py` and `*_test.py` files run directly with those options.
+Coverage flags in the command, `PYTEST_ADDOPTS`, or repository pytest configuration
+trigger the full suite, preserving coverage thresholds. Discovery settings such
+as `testpaths`, `python_files` and `norecursedirs` also retain the full command
+so selected files cannot expand its suite. Custom configuration and
+root-directory arguments also fall back to the full command.
+References to a changed test module's name in other tracked Python files trigger
+the full suite. Declare dynamically shared test modules in infrastructure globs
+when their names are assembled at runtime. Changes to Python modules
+or helpers fall back to `testCommand`: a matching test filename cannot establish
+coverage of the module's callers. Missing mappings, unittest and other runners
+also use `testCommand`. The default mapping is absent, preserving custom suites.
+
+The base is the merge-base of the pushed commit with `origin/<default branch>`.
+The branch comes from `git.baseBranch`, with origin's remote HEAD as fallback.
+Missing refs, shallow or disconnected history, and pushed commits other than the
+checkout's HEAD trigger the full suite. Deletion-only pushes validate the current
+checkout. Tracked working-tree changes participate in selection. Every hook run
+prints the selected mode and its reason.
+
+Shared infrastructure changes always trigger the full suite. Defaults cover
+lockfiles, package manifests, Python packaging and requirements, configuration
+and test setup filenames, tool pins, `.repo-standard*.json`, CI workflows,
+hooks, scripts and policy. Patterns match repository-relative paths and basenames
+at any depth. Add repository-specific patterns with
+`development.sharedInfrastructureGlobs`, an optional list defaulting to `[]`.
+These patterns extend the built-in defaults, for example `["shared/**", "fixtures/**"]`.
+
+Only hook-mode Vitest receives `--maxWorkers` and `--testTimeout`. Workers default
+to the process's available CPUs minus the one-minute load average, rounded down
+with a floor of one. `VITEST_MAX_WORKERS` overrides that count. The timeout defaults
+to 15000 milliseconds. `REPO_STANDARD_TEST_TIMEOUT` overrides it. Both overrides
+must be positive integers. Full-suite fallbacks preserve `testCommand` arguments
+and receive the same hook limits, replacing existing worker and timeout CLI flags
+to avoid duplicate options. An existing minimum-worker CLI flag is set to one so
+it cannot exceed the hook's maximum. Hook invocations also set the legacy Vitest 3
+thread and fork environment bounds to a minimum of one and the selected maximum.
+This keeps pool-specific configuration from overriding the cap. Newer Vitest
+versions use the CLI bound. No destination Vitest configuration is edited.
+Full checks and CI receive neither flag from this feature.
+
+The current canonical `scripts/repository.py update` installs the managed helper,
+check runner, hook and documentation. Existing version 2 configuration needs no
+manual migration: absent options use the defaults above. Selection remains full
+until the destination explicitly declares a mapping. Repository-owned custom test
+commands and infrastructure globs survive updates.
+
+### Repository service diagnosis
+
+Put read-only service checks in regular executable files under `.githooks/doctor.d/`.
+`./scripts/setup --doctor` runs them in filename order from the checkout root,
+after tool, dependency and hook checks. The first failure stops doctor and returns
+nonzero. Normal setup does not run them. Use `mise exec --` inside a hook when it
+needs pinned tools. Never install, deploy or mutate services from doctor hooks.
+These repository-owned checks stay in review scope and survive canonical updates.
+
+### Review scope in adopted repositories
+
+The renderer derives exact managed paths from its output manifest for CodeRabbit
+`reviews.path_filters` and Greptile `ignorePatterns`. Vendored scripts, the shared
+hook, generated policy, provenance lock and other immutable canonical outputs
+are reviewed in `sshickles/repo-standard`, not again in destination repositories.
+Validation authenticates their source and rejects modifications to excluded files.
+No managed-path exclusions are generated in the canonical repository itself.
+The selected canonical revision is an operator-approved trust anchor. Provenance
+checks consistency with that source; it does not independently authorize replacing
+the validators and lock together. Owner rollout direction 12 places their review
+in the canonical repository, so destination exclusions include both.
+
+Repository instructions, `.repo-standard.json`, mise pins, application code,
+repository CI workflows, custom scripts, `.githooks/pre-push.d/*` and
+`.githooks/doctor.d/*` remain in scope. Mixed local integrations such as `t3.json`,
+`AGENTS.md` and `.claude/settings.json` also stay in scope. Existing in-scope
+finding, warning and unavailable-review gates remain unchanged. Use the current
+canonical updater to generate both reviewer configs; do not hand-copy ignore lists
+or edit excluded runtime files. Put service-specific behavior in the owned hooks.
 
 ## Integrity and canonical updates
 
@@ -141,11 +299,16 @@ which can leave checks and subsequent local updates unable to start. The current
 canonical generator is the supported bootstrap for upgrades, including recovery
 from a partial installed-generator update. Preserve and commit any partial update
 on the task branch first; keep the existing lock for integrity and collision checks.
-If an interrupted update changed checked commands before refreshing the lock,
+If an interrupted update changed canonical-managed files before refreshing the lock,
 validation, audit and update reject that drift. Preserve the partial changes in a
-commit, restore the checked commands to their last valid installed versions
+commit, restore checked commands and all other canonical-managed files (including
+managed documentation and helper scripts) to their last valid installed versions
 matching the retained lock, commit that restoration, and retry from the selected
-canonical checkout.
+canonical checkout. An obsolete renderer may also leave reviewer configs without
+the managed-path exclusions required by its recorded source. Preserve that partial
+result, regenerate `.coderabbit.yaml` and `greptile.json` from the authenticated
+recorded snapshot with the current canonical renderer, inspect and commit those
+configs, then retry. The updater never silently repairs configuration drift.
 
 ```sh
 cd /path/to/canonical
@@ -165,7 +328,9 @@ Local integrations are preserved when the canonical file is unchanged between
 the recorded and selected revisions. Shared commands and the hook still require
 exact content from the recorded revision. The caller selects the
 reviewed canonical revision; ancestry is not required because native squash
-merging can replace the original source history. It is safe to rerun. Finish, check and review the diff,
+merging can replace the original source history. The updater writes the provenance lock last, after all other outputs succeed.
+A successful apply is safe to rerun. After interruption, follow the recovery steps
+above before retrying. Finish, check and review the diff,
 then update the repository's existing `chore/canonical-standard` rollout PR
 rather than creating another. Do not rebase or force-push a published branch.
 No command automatically opens PRs or changes live settings.
@@ -207,7 +372,10 @@ inspect repository and inherited rulesets and legacy protection, actual recent
 PR check names, integration bindings and current bypass actors. Present one
 exact owner approval batch, including removal of deployment requirements.
 Preserve unrelated protections and bypass actors. The `configure` preview
-refuses conflicting managed rulesets rather than overwriting them. Reconcile
+shows an in-place update diff for an existing default-branch ruleset, including
+one with a different name. It preserves unmanaged rule parameters and bypass
+actors, and refuses ambiguous multiple targets. Existing-rule updates remain
+preview-only; apply refuses them until manually reconciled. Reconcile
 existing protections in the approved plan; never add a redundant ruleset to
 work around a conflict. A ruleset with changed bypass actors requires explicit
 review. This task does not apply that plan.
@@ -249,6 +417,12 @@ repository arguments. They do not authorize changes to other repositories.
 Verify each target against the owner's assigned scope before a GitHub write.
 
 ## Recovery
+
+The manual worktree helper clears inherited Git repository variables while retaining
+command-scope HTTP, credential, SSH, protocol and URL rewrite settings. It fetches and
+uses the full configured remote-tracking ref, and refuses calls from another
+repository's checkout. Short local branch or tag names cannot shadow its base.
+
 
 Creation refuses an existing destination. After partial failure, retain the
 created repository and local checkout, inspect the error, and resume adoption

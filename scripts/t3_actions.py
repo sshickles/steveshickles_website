@@ -1,5 +1,6 @@
 """Repository action generation and report-only T3 inventory."""
 import copy
+import difflib
 import json
 
 
@@ -52,6 +53,24 @@ def validate(document, canonical):
 
 
 def merge(document, canonical):
+    scripts_from(document)
+    try:
+        return _merge(document, canonical)
+    except ValueError as error:
+        proposal = copy.deepcopy(document)
+        proposal['scripts'] = copy.deepcopy(canonical) + [
+            copy.deepcopy(s) for s in scripts_from(document) if s not in canonical]
+        diff = ''.join(difflib.unified_diff(
+            (json.dumps(document, indent=2) + '\n').splitlines(True),
+            (json.dumps(proposal, indent=2) + '\n').splitlines(True),
+            fromfile='t3.json (existing)', tofile='t3.json (manual integration proposal)'))
+        if not diff:
+            diff = ('No canonical file changes; reconcile the conflicting actions manually:\n'
+                    + json.dumps(document, indent=2) + '\n')
+        raise ValueError(str(error) + '\nConflict: incomplete manual integration proposal; conflicting actions are retained. No overwrite.\n' + diff) from error
+
+
+def _merge(document, canonical):
     result = copy.deepcopy(document)
     retained = []
     for script in scripts_from(document):

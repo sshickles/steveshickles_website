@@ -19,7 +19,7 @@ FILES = ['policy/policy.md', 'policy/repository.md', 'policy/t3-actions.json', '
          'docs/t3-compatibility.md', '.githooks/pre-push',
          '.github/workflows/ci.yml', '.github/workflows/policy-audit.yml',
          'apply-ruleset.sh', 'scripts/new-repo', 'scripts/lint-shell', 'scripts/setup', 'scripts/check', 'scripts/test', 'scripts/review',
-         'scripts/commands.py', 'scripts/development.py', 'scripts/pre_push.py',
+         'scripts/commands.py', 'scripts/development.py', 'scripts/pre_push.py', 'scripts/changed_tests.py',
          'scripts/repository.py', 'scripts/standard.py', 'scripts/halo.py',
          'scripts/worktree.py', 'scripts/wt.sh', 'scripts/install-hooks.mjs']
 EXECUTABLES = ['scripts/lint-shell', 'scripts/new-repo', 'apply-ruleset.sh', 'scripts/setup', 'scripts/check', 'scripts/test', 'scripts/review', '.githooks/pre-push', 'scripts/wt.sh']
@@ -27,6 +27,16 @@ EXECUTABLES = ['scripts/lint-shell', 'scripts/new-repo', 'apply-ruleset.sh', 'sc
 def runtime_files(output):
     return [name for name in output
             if (name.startswith('scripts/') and name.endswith(('.py', '.mjs'))) or name == 't3.json']
+
+
+REVIEW_SCOPE_MARKER = '    # repo-standard: managed-path-filters\n'
+
+
+def canonical_managed_files(output):
+    """Exact vendored outputs; mixed/local integrations must remain reviewable."""
+    local = {'AGENTS.md', '.claude/settings.json', 't3.json'}
+    return sorted(name for name in output
+                  if name not in local and not name.startswith('.github/workflows/'))
 
 
 def git(source, *args):
@@ -97,8 +107,14 @@ def rules(config, files):
     if not config['integrations']['greptile']:
         raise ValueError('Greptile is required; missing integration blocks rollout')
     checks = next(r for r in data['rules'] if r['type'] == 'required_status_checks')
-    checks['parameters']['required_status_checks'] = config['ciChecks'] + [
-        {'context': 'Greptile Review', 'integration_id': 867647}]
+    contexts = {c['context']: c for c in config['ciChecks']}
+    if len(contexts) != len(config['ciChecks']):
+        raise ValueError('Duplicate ciChecks contexts')
+    greptile = {'context': 'Greptile Review', 'integration_id': 867647}
+    if 'Greptile Review' in contexts and contexts['Greptile Review'] != greptile:
+        raise ValueError('Greptile Review requires integration 867647')
+    contexts['Greptile Review'] = greptile
+    checks['parameters']['required_status_checks'] = list(contexts.values())
     return data
 
 
@@ -126,13 +142,65 @@ def render(data, config):
     canonical = definitions(files)
     if canonical:
         output['t3.json'] = json_text(merge({}, canonical))
+    if config.get('existingCI'):
+        output.pop('.github/workflows/ci.yml', None)
+    if REVIEW_SCOPE_MARKER in files['.coderabbit.yaml'] and config['repository'].lower() != CANONICAL:
+        managed = canonical_managed_files(output)
+        filters = ''.join('    - ' + json.dumps('!' + name) + '\n' for name in managed)
+        output['.coderabbit.yaml'] = output['.coderabbit.yaml'].replace(
+            REVIEW_SCOPE_MARKER, REVIEW_SCOPE_MARKER + filters)
+        greptile['ignorePatterns'] = greptile.get('ignorePatterns', '').rstrip('\n') + '\n' + '\n'.join('/' + name for name in managed)
+        output['greptile.json'] = json_text(greptile)
     return output
+
+
+def workflow_scalar(value):
+    """Read a single-line workflow string, preserving quoted comment characters."""
+    value = value.strip()
+    if value.startswith('"'):
+        result, end = json.JSONDecoder().raw_decode(value)
+    elif value.startswith("'"):
+        quoted = re.match(r"'((?:[^']|'')*)'", value)
+        if not quoted:
+            raise ValueError('Unterminated workflow string')
+        result, end = quoted[1].replace("''", "'"), quoted.end()
+    else:
+        return re.split(r'\s+#', value, maxsplit=1)[0].rstrip()
+    if not re.fullmatch(r'(?:\s+#.*)?\s*', value[end:]):
+        raise ValueError('Expected a single workflow string with an optional comment')
+    return result
+
+
+def validate_existing_ci(path, config):
+    ci = config.get('existingCI')
+    if not ci:
+        return
+    # Accept a conventional block-style job. Unsupported YAML must be reconciled
+    # explicitly instead of mistaking a comment or another job for the check.
+    # read_text uses universal newlines, including for workflows stored with CRLF.
+    text = target_path(path, ci['workflow']).read_text()
+    jobs = re.search(r'^jobs:\s*\n((?:[ \t]+[^\n]*\n|\n)*)', text + '\n', re.M)
+    block = re.search(r'^  ' + re.escape(ci['job']) + r':\s*\n((?:    [^\n]*\n|\n)*)', jobs[1], re.M) if jobs else None
+    if not block:
+        raise ValueError('existingCI job must be a block-style job in the selected workflow')
+    name = re.search(r'^    name: *([^\n]+)$', block[1], re.M)
+    context = workflow_scalar(name[1]) if name else ci['job']
+    if context != ci['context']:
+        raise ValueError('existingCI job name differs from its required context')
+    runs = re.findall(r'^      - run: *([^\n]+)$', block[1], re.M)
+    if not any(workflow_scalar(value) == './scripts/check' for value in runs):
+        raise ValueError('existingCI job requires a standalone run: ./scripts/check step')
 
 
 def validate(path, *, repair_missing_runtime=False):
     from development import read_config
     path = Path(path).resolve()
     config = read_config(path / '.repo-standard.json')
+    validate_existing_ci(path, config)
+    if config['repository'] == CANONICAL:
+        if (config['integrations']['deploymentCheck'] is not None
+                or {'context': 'Greptile Review', 'integration_id': 867647} not in config['ciChecks']):
+            raise ValueError('Canonical configuration drift: no deployment target; ciChecks must include Greptile Review integration 867647')
     data = json.loads((path / LOCK).read_text())
     expected = render(data, config)
     for name in [*expected, 'docs/agents/repository.md']:
@@ -145,7 +213,14 @@ def validate(path, *, repair_missing_runtime=False):
     canonical = definitions(verify_snapshot(data))
     t3 = target_path(path, 't3.json')
     if canonical and not (repair_missing_runtime and not t3.exists()):
-        validate_actions(json.loads(t3.read_text()), canonical)
+        document = json.loads(t3.read_text())
+        try:
+            validate_actions(document, canonical)
+        except ValueError:
+            # Conflicts carry the same exact manual diff during updates as adoption.
+            from t3_actions import merge
+            merge(document, canonical)
+            raise
     if (path / 'docs/agents/policy.md').read_text() != expected['docs/agents/policy.md']:
         raise ValueError('Generated policy drift from recorded canonical revision')
     # Local configuration is checked separately from shared policy content.
@@ -179,8 +254,24 @@ def validate(path, *, repair_missing_runtime=False):
             continue
         if (path / name).read_text() != expected[name]:
             raise ValueError(f'Command or hook drift: {name}')
+    # Review exclusions are safe only for files checked against the same source.
+    # Older locks predate this contract and keep their existing validation rules.
+    if REVIEW_SCOPE_MARKER in data['files']['.coderabbit.yaml']:
+        for name in canonical_managed_files(expected):
+            if name in (LOCK, 'ruleset.json', 'greptile.json'):
+                continue  # Git proofs and structured JSON checks cover these below.
+            target = path / name
+            if not target.exists():
+                if repair_missing_runtime:
+                    continue
+                raise ValueError(f'Canonical-managed file missing: {name}')
+            if not target.is_file():
+                raise ValueError(f'Canonical-managed path must be a regular file: {name}')
+            if target.read_text() != expected[name]:
+                raise ValueError(f'Canonical-managed file drift: {name}')
     from pre_push import repository_checks
     repository_checks(path)
+    repository_checks(path, '.githooks/doctor.d')
     hooks = subprocess.run(['git', 'config', '--local', '--get', 'core.hooksPath'], cwd=path, capture_output=True, text=True)
     if hooks.stdout.strip() != '.githooks':
         raise ValueError('Hook installation missing: run ./scripts/setup')
@@ -226,7 +317,12 @@ def target_path(path, name):
 
 
 def plan(path, data, config):
+    validate_existing_ci(path, config)
     output = render(data, config)
+    if config['profile'] == 'custom' and not target_path(path, 'mise.toml').exists():
+        output['mise.toml'] = '[tools]\n' + ''.join(
+            json.dumps(k) + ' = ' + json.dumps(v) + '\n'
+            for k, v in config['development'].get('tools', {}).items())
     output['.repo-standard.json'] = json_text(config)
     from t3_actions import definitions, merge
     canonical = definitions(data['files'])
@@ -271,9 +367,13 @@ def update(path, source, revision, config, apply=False, *, strict=False):
     if previous:
         from development import read_config
         old_output = render(previous, read_config(path / '.repo-standard.json'))
-        # Keep local integrations when there is no canonical change to integrate.
+        managed = (set(canonical_managed_files(render(data, config)))
+                   if REVIEW_SCOPE_MARKER in data['files']['.coderabbit.yaml'] else set())
+        # Keep local integrations only where the new revision permits overrides.
+        # Newly integrity-locked files must reach the conflict check before writes.
         for name in list(changes):
             if ((path / name).exists() and name not in ('.claude/settings.json', '.repo-standard.json')
+                    and name not in managed
                     and old_output.get(name) == changes[name]):
                 del changes[name]
     status = 'update available' if changes else 'up to date'
@@ -303,7 +403,8 @@ def update(path, source, revision, config, apply=False, *, strict=False):
                      and (name not in old_output or (path / name).read_text() != old_output[name])]
         if conflicts:
             raise ValueError('Local changes conflict with update; integrate manually: ' + ', '.join(conflicts))
-    for name, value in changes.items():
+    for name in sorted(changes, key=lambda name: name == LOCK):
+        value = changes[name]
         target = target_path(path, name)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(value)
