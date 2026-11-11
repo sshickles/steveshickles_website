@@ -193,17 +193,59 @@ def unittest_modules(root, full, runner, selected):
     return [*runner, *options, *modules]
 
 
+def node_test_file(name):
+    path = Path(name)
+    return path.suffix in JS_SUFFIXES and path.stem.endswith(('.test', '.spec'))
+
+
+def node_test_key(name):
+    path = Path(name).with_suffix('')
+    stem = path.name.removesuffix('.test').removesuffix('.spec')
+    return (*[part for part in path.parts[:-1] if part not in ('src', 'lib', 'tests', 'test', '__tests__')], stem)
+
+
+def node_tests(root, mapping, full, files):
+    """Use colocated or mirrored test names, retaining the full runner's scope."""
+    targets = full[len(mapping['command']):]
+    if not targets or any((root / target).is_dir() for target in targets):
+        raise ValueError('Node default or directory discovery requires the full command; declare test files or globs to map changes')
+    inventory = set()
+    for target in targets:
+        if Path(target).is_absolute() or '..' in Path(target).parts or any(char in target for char in '{}()'):
+            raise ValueError('Node target requires full runner glob expansion')
+        matches = list(root.glob(target))
+        if not matches:
+            raise ValueError('Node target has no matching files: ' + target)
+        inventory.update(path.relative_to(root).as_posix() for path in matches if path.is_file())
+    tests = [name for name in inventory if Path(name).suffix in JS_SUFFIXES]
+    selected = set()
+    for name in files:
+        if Path(name).suffix not in JS_SUFFIXES:
+            continue
+        if not (root / name).is_file():
+            raise ValueError('source or test file deleted')
+        if name in inventory:
+            matches = [name]
+        elif node_test_file(name) or any(part in ('test', 'tests', '__tests__') for part in Path(name).parts[:-1]):
+            raise ValueError('changed test input is outside the full command scope: ' + name)
+        else:
+            matches = [test for test in tests if node_test_key(test) == node_test_key(name)]
+        if not matches:
+            raise ValueError('no in-scope test mapping for ' + name)
+        selected.update(matches)
+    return [*mapping['command'], *('./' + name for name in sorted(selected))] if selected else []
+
+
 def select_tests(root, config, files, reason):
     root = Path(root).resolve()
     dev = config['development']
-    mapping = dev.get('changedTestCommand')
+    mapping = dev['changedTestCommand']
     full = list(config['testCommand'])
-    kind = mapping['kind'] if mapping else None
-    # An explicit mapping supplies a direct runner so flags never target a wrapper.
-    if kind == 'vitest':
-        full = vitest_arguments(full)
+    kind = mapping['kind']
+    direct_vitest = kind == 'vitest' and full[:len(mapping['command']) + 1] == [*mapping['command'], 'run']
     def fallback(why):
-        return full, 'full tests: ' + why
+        # Only direct runners accept hook flags; preserve wrapper argv exactly.
+        return vitest_arguments(full) if direct_vitest else full, 'full tests: ' + why
     if files is None:
         return fallback(reason)
     shared = (*SHARED_GLOBS, *dev.get('sharedInfrastructureGlobs', []))
@@ -211,20 +253,32 @@ def select_tests(root, config, files, reason):
         if any(fnmatch.fnmatchcase(name, glob) or fnmatch.fnmatchcase(Path(name).name, glob)
                for glob in shared):
             return fallback('shared infrastructure changed: ' + name)
-    if not mapping:
-        return fallback('no affected-test mapping configured')
-    suffixes = JS_SUFFIXES if kind == 'vitest' else {'.py'}
+    if kind == 'full':
+        return fallback(mapping['reason'])
+    if kind == 'files':
+        selected = [name for name in files if any(fnmatch.fnmatchcase(name, glob) for glob in mapping['include'])]
+        if any(not (root / name).is_file() for name in selected):
+            return fallback('matching file deleted')
+        if not selected:
+            return [], 'no changed matching files; no checks'
+        return [*mapping['command'], *('./' + name for name in selected)], 'changed matching files: ' + reason
+    suffixes = JS_SUFFIXES if kind in ('vitest', 'node-test') else {'.py'}
     for name in files:
         if (Path(name).suffix not in suffixes
                 and not any(fnmatch.fnmatchcase(name, glob) for glob in DOCUMENTATION_GLOBS)):
             return fallback('unclassified test input changed: ' + name)
+    if kind == 'node-test':
+        try:
+            return node_tests(root, mapping, full, files), 'affected Node tests: ' + reason
+        except (ValueError, OSError, UnicodeError) as error:
+            return fallback(str(error))
     if kind == 'vitest':
         relevant = [name for name in files if Path(name).suffix in JS_SUFFIXES]
         if any(not (root / name).is_file() for name in relevant):
             return fallback('source or test file deleted')
         if not relevant:
             return [], 'no changed relevant files; no tests'
-        options = config['testCommand'][len(mapping['command']) + 1:]
+        options = config['testCommand'][len(mapping['command']) + 1:] if direct_vitest else []
         if any(not arg.startswith('-') or arg == '--' for arg in options):
             return fallback('Vitest positional filters or separate option values require the full command')
         return [*mapping['command'], 'related', *(str(root / name) for name in relevant),
@@ -270,14 +324,28 @@ def select_tests(root, config, files, reason):
 
 def run(root, config, commits):
     root = Path(root).resolve()
+    mapping = config['development']['changedTestCommand']
+    environment = {**os.environ, 'MISE_AUTO_INSTALL': '0'}
+    if 'preflight' in mapping:
+        print('Pre-push: affected-check preflight', flush=True)
+        result = subprocess.call(['mise', 'exec', '--', *mapping['preflight']], cwd=root, env=environment)
+        if result:
+            return result
     files, reason = changed_files(root, commits)
     command, message = select_tests(root, config, files, reason)
     print('Pre-push: ' + message, flush=True)
     if not command:
         return 0
-    environment = {**os.environ, 'MISE_AUTO_INSTALL': '0'}
-    mapping = config['development'].get('changedTestCommand')
-    if mapping and mapping['kind'] == 'unittest' and message.startswith('changed unittest modules:'):
+    if mapping['kind'] == 'files' and message.startswith('changed matching files:'):
+        # Commands such as bash -n accept only one input file; never silently
+        # treat the remaining paths as script arguments.
+        prefix = mapping['command']
+        for name in command[len(prefix):]:
+            result = subprocess.call(['mise', 'exec', '--', *prefix, name], cwd=root, env=environment)
+            if result:
+                return result
+        return 0
+    if mapping['kind'] == 'unittest' and message.startswith('changed unittest modules:'):
         try:
             _, top, _, _ = unittest_scope(root, config['testCommand'], mapping['command'])
         except (ValueError, OSError, UnicodeError):
@@ -286,8 +354,8 @@ def run(root, config, commits):
         else:
             environment['PYTHONPATH'] = str(top) + (os.pathsep + environment['PYTHONPATH']
                                                     if environment.get('PYTHONPATH') else '')
-    if mapping and mapping['kind'] == 'vitest':
-        workers = command[command.index('--maxWorkers') + 1]
+    if mapping['kind'] == 'vitest':
+        workers = command[command.index('--maxWorkers') + 1] if '--maxWorkers' in command else vitest_options()[1]
         # Vitest 3 pool-specific bounds take precedence over maxWorkers. Newer
         # versions ignore these legacy variables and use the CLI limit instead.
         for pool in ('THREADS', 'FORKS'):

@@ -35,6 +35,10 @@
       "artifacts": [
         ".cache/tools/actionlint"
       ]
+    },
+    "changedTestCommand": {
+      "kind": "full",
+      "reason": "Repository policy validation requires the complete checkout; there is no application test suite."
     }
   },
   "conventions": {

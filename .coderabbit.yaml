@@ -41,6 +41,7 @@ reviews:
     - "!scripts/pre_push.py"
     - "!scripts/repository.py"
     - "!scripts/review"
+    - "!scripts/service_setup.py"
     - "!scripts/setup"
     - "!scripts/standard.py"
     - "!scripts/t3_actions.py"

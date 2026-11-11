@@ -1,8 +1,8 @@
 <!-- Generated. Do not edit. -->
 Canonical repository: sshickles/repo-standard
-Canonical revision: eb89de12a414b97a8862cd8496113bcfe3f0e6ee
+Canonical revision: c61632cb382b72aa53d386ae801b6843a6b255cf
 Canonical source: policy/policy.md
-SHA-256: 04e97c653c3aa1c7fffc2fb85e2f2e335eb26bec4e184517304ab62da8abbd32
+SHA-256: b5d3845fc552f714b6330b450ac9e0de9f14e68906362c253ca1b5ce284a7929
 
 # Shared engineering policy
 
@@ -118,6 +118,24 @@ conflict. Report missing access or prerequisites without secrets. Setup must
 never deploy as a side effect. Production labels do not create a separate
 setup approval gate; all initializers must be idempotent and non-deploying.
 
+Repositories with `convex/` must configure `development.convex` with an explicit
+shared cloud dev deployment and `development.vercel` for Development pulls.
+Missing attachment configuration is audit drift. Setup requires existing Vercel
+login and link, pulls Development values, and attaches the named deployment
+without changing unrelated environment keys. It verifies the actual deployment
+read-only and fails on mismatch. Never provision a deployment, create a project,
+push functions or print environment values during setup. Identical attachment
+reruns do not rewrite the artifact. Use the template adapter rather than local
+service scripts (owner approval: Steve, 2026-11-11). Protect the final environment
+artifact and temporary pulls from Git and review input before pulling values.
+
+CI uses `./scripts/setup --ci` to install pinned tools, locked dependencies and
+hooks without local service attachment, local artifact requirements, local
+initializers or host runtime setup. This explicit mode needs no service login
+or project link. Normal setup still requires them; the `CI` environment variable
+alone never skips attachment. CI then runs the complete `./scripts/check` with
+its own build and test inputs. This changes bootstrap, not the required checks.
+
 Check runs all required locally executable validation, including tests and
 policy integrity. CI calls it without arguments and keeps the full suite as
 the required merge gate. Pre-push uses its hook mode for fast checks and affected
@@ -140,9 +158,14 @@ Commit and install a pre-push hook that runs `./scripts/check --pre-push`, prese
 existing responsibilities and rejects the protected default branch by its
 remote destination ref from stdin, regardless of the local branch name. Run checks for ref deletions too.
 Hook mode runs policy integrity, lint, type checking and configured non-test
-validation, then affected tests from the pushed commit's merge-base with the
-origin default branch. Missing history, shared infrastructure changes and stacks
-without an affected-test mapping run the full test command. Repository-owned
+validation, then affected checks from the pushed commit's merge-base with the
+origin default branch. Every repository must declare `development.changedTestCommand`.
+Run its optional preflight first; failure blocks push. Select changed files where
+mappable. Missing history, shared infrastructure changes and unmapped test inputs
+run the full test command, after the same preflight. Repositories without a unit
+suite declare a per-file check or an explicit full check with a reason. These
+settings are the uniform template contract, not repository policy exceptions
+(owner approval: Steve, 2026-11-11). Repository-owned
 pre-push checks still run after the common checks.
 
 Prefer `~/.local/bin/cr-auto` or the appropriate configured
