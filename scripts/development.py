@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+from service_setup import OVERRIDES
 
 try:
     import tomllib
@@ -47,14 +48,25 @@ def read_config(path):
     dev = config["development"]
     if dev.get("environment") not in ("none", "development", "preview", "production"):
         raise ValueError("development.environment must name a documented service environment")
-    if "vercel" in dev and dev["vercel"] != {"environment": "development"}:
-        raise ValueError("development.vercel must be an object with environment: development")
+    if "vercel" in dev:
+        vercel = dev['vercel']
+        if (not isinstance(vercel, dict) or vercel.get('environment') != 'development'
+                or set(vercel) - {'environment', 'projectId', 'orgId', 'requiredKeys'}
+                or not isinstance(vercel.get('projectId'), str) or not vercel['projectId'].strip()):
+            raise ValueError('development.vercel requires environment: development and an explicit projectId')
+        if 'orgId' in vercel and (not isinstance(vercel['orgId'], str) or not vercel['orgId'].strip()):
+            raise ValueError('development.vercel.orgId must be a nonempty organization or team ID')
+        required_keys = vercel.get('requiredKeys', [])
+        if not isinstance(required_keys, list) or any(
+                not isinstance(key, str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', key)
+                for key in required_keys):
+            raise ValueError('development.vercel.requiredKeys must be a list of environment variable names')
     if 'vercel' in dev and dev['environment'] != 'development':
         raise ValueError('development.vercel requires development.environment: development')
     if "convex" in dev:
         convex = dev["convex"]
         if (not isinstance(convex, dict) or not {"deployment"} <= set(convex)
-                or set(convex) - {"deployment", "urlVariable", "url"}
+                or set(convex) - {"deployment", "urlVariable", "url", "additionalDeployments"}
                 or not isinstance(convex["deployment"], str)
                 or not re.fullmatch(r"dev:[a-z0-9]+(?:-[a-z0-9]+)+", convex["deployment"])):
             raise ValueError("development.convex requires an explicit dev deployment and optional urlVariable")
@@ -66,6 +78,20 @@ def read_config(path):
             raise ValueError('development.convex.url must be the configured deployment cloud URL')
         if "vercel" not in dev or dev["environment"] != "development":
             raise ValueError("Convex setup requires development.environment: development and development.vercel")
+        additional = convex.get('additionalDeployments', {})
+        if not isinstance(additional, dict):
+            raise ValueError('development.convex.additionalDeployments must be a named deployment object')
+        variables = {'CONVEX_DEPLOYMENT', *OVERRIDES, convex.get('urlVariable')}
+        for name, target in additional.items():
+            if (not re.fullmatch(r'[A-Za-z0-9_-]+', name) or not isinstance(target, dict)
+                    or set(target) != {'deployment', 'deployKeyVariable'}
+                    or not isinstance(target['deployment'], str)
+                    or not re.fullmatch(r'dev:[a-z0-9]+(?:-[a-z0-9]+)+', target['deployment'])
+                    or not isinstance(target['deployKeyVariable'], str)
+                    or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', target['deployKeyVariable'])
+                    or target['deployKeyVariable'] in variables):
+                raise ValueError('Each additional Convex deployment requires an explicit dev deployment and a unique deployKeyVariable')
+            variables.add(target['deployKeyVariable'])
     for key in ("requiredFiles", "localCommands"):
         if not isinstance(dev.get(key), list):
             raise ValueError(f"development.{key} must be an explicit list")

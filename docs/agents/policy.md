@@ -1,8 +1,8 @@
 <!-- Generated. Do not edit. -->
 Canonical repository: sshickles/repo-standard
-Canonical revision: c61632cb382b72aa53d386ae801b6843a6b255cf
+Canonical revision: bd0e86af269b080ce17962d6f75e60a52b0a6b64
 Canonical source: policy/policy.md
-SHA-256: b5d3845fc552f714b6330b450ac9e0de9f14e68906362c253ca1b5ce284a7929
+SHA-256: dfc6ff983bd03a0324666556378b3b82ac50683866a583ddfa32bb7a179d5047
 
 # Shared engineering policy
 
@@ -128,6 +128,17 @@ push functions or print environment values during setup. Identical attachment
 reruns do not rewrite the artifact. Use the template adapter rather than local
 service scripts (owner approval: Steve, 2026-11-11). Protect the final environment
 artifact and temporary pulls from Git and review input before pulling values.
+Every `development.vercel` requires the expected `projectId`; optional `orgId`
+also pins the team. Verify the link before any pull and fail on mismatch without
+relinking. Optional `requiredKeys` lists keys that setup and doctor require to
+be nonempty in the merged artifact. Setup enforces mode 0600 on every run,
+including unchanged artifacts; doctor rejects any other mode. Optional
+`development.convex.additionalDeployments` maps names to objects containing an
+explicit `dev:<name>` deployment and a unique `deployKeyVariable`. Require each
+key in the artifact and structurally check its prefix and deployment name,
+including copies in `.env` and the shell. Reject production, preview or other
+deployment keys without printing values. See [setup](../setup.md) for a JSON
+example and the full configuration contract.
 
 CI uses `./scripts/setup --ci` to install pinned tools, locked dependencies and
 hooks without local service attachment, local artifact requirements, local

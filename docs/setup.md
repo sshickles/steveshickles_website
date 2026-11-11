@@ -64,17 +64,33 @@ scripts from `localCommands` and owned doctor hooks during rollout:
     "environment": "development",
     "requiredFiles": [".env.local"],
     "localCommands": [],
-    "vercel": {"environment": "development"},
+    "vercel": {
+      "environment": "development",
+      "projectId": "prj_example",
+      "orgId": "team_example",
+      "requiredKeys": ["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"]
+    },
     "convex": {
       "deployment": "dev:benevolent-dolphin-855",
-      "urlVariable": "NEXT_PUBLIC_CONVEX_URL"
+      "urlVariable": "NEXT_PUBLIC_CONVEX_URL",
+      "additionalDeployments": {
+        "secondary": {
+          "deployment": "dev:shared-secondary-123",
+          "deployKeyVariable": "CONVEX_SECONDARY_DEPLOY_KEY"
+        }
+      }
     }
   }
 }
 ```
 
 Keep the required affected-test mapping and other development fields alongside
-these fields. `vercel` accepts exactly `environment: development`. `convex`
+these fields. `vercel` requires `environment: development` and the expected
+`projectId`. Optional `orgId` pins the organization or team too. Audit rejects
+every `development.vercel` object missing its expected project ID, including
+repositories without Convex. Optional `requiredKeys` lists environment variable
+names that must be present and nonempty in the merged `.env.local` after a pull
+and during doctor. Missing or empty keys fail without printing values. `convex`
 requires an explicit `dev:<name>` selector, never `prod`, `local` or a personal
 project selector. It also accepts optional `url` and `urlVariable` fields.
 When present, `urlVariable` names the frontend's
@@ -86,7 +102,10 @@ must start with the configured deployment name; verification compares the full
 URL. [Convex documents regional deployment URLs](https://docs.convex.dev/management-api/list-deployments).
 
 Setup requires an existing Vercel login and `.vercel/project.json` link with
-project and organization IDs. It runs `vercel whoami` before pulling. If login
+project and organization IDs. Setup and doctor compare the link against the
+configured project ID and optional organization ID before invoking Vercel.
+A mismatch fails with an instruction to correct the link separately; setup
+never relinks it. It runs `vercel whoami` before pulling. If login
 or link is missing, it fails with an instruction to complete that step separately.
 It never logs in, links, creates a project or prompts. Pin Vercel in `mise.toml`
 and keep Convex in the locked dependencies. The adapter uses the installed
@@ -100,7 +119,9 @@ only `CONVEX_DEPLOYMENT` and the configured URL variable with the explicit share
 attachment. Vercel remains the source for the other pulled values; backend
 secrets remain in Convex. The generated artifact is never hand-maintained.
 
-The write is atomic with mode 0600. Symlinked `.env.local` files are rejected.
+The write is atomic with mode 0600. Every normal run tightens an existing
+`.env.local` to 0600 even when content is unchanged. Doctor rejects any other
+mode without repairing it. Symlinked `.env.local` files are rejected.
 Duplicate managed assignments are removed. Identical reruns do not rewrite the
 file. Temporary files are removed on success or failure. Before pulling, setup
 rejects tracked `.env.local` files and installs uniform local Git excludes for
@@ -123,9 +144,17 @@ its identity without pulling or writing files. Tests stub both service CLIs and
 never contact real deployments. See [Vercel env](https://vercel.com/docs/cli/env)
 and [Convex function-spec](https://docs.convex.dev/cli/reference/function-spec).
 
-The adapter selects the primary `convex/` backend. Additional backend selectors
-pulled from Vercel are preserved. Audit each additional backend during rollout;
-do not replace its selector with the primary backend's deployment.
+The adapter selects the primary `convex/` backend. Optional
+`development.convex.additionalDeployments` maps backend names to objects with
+`deployment: "dev:<name>"` and `deployKeyVariable`. Variable names must be unique
+and must not conflict with primary selectors or credentials. Each configured
+key is required in the merged `.env.local`. Setup and doctor also inspect it
+when present in `.env` or the shell. They require the structural prefix
+`dev:<configured-name>|` and a nonempty credential, rejecting production,
+preview and other deployment keys without printing values. This does not
+authenticate the key or query secondary deployments. Additional keys are
+preserved, never replaced with the primary backend's selector. Declare every
+additional backend credential during rollout.
 
 ## Migrate older configuration
 
