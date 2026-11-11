@@ -111,14 +111,19 @@ def verify(root, dev, text):
         raise ValueError('Convex read-only verification selected a different deployment')
 
 
-def protect_environment(root, *, repair):
-    """Keep the final artifact and interrupted staging out of commits and review."""
+def reject_tracked_environment(root):
+    """Reject tracked artifacts before service calls or writes."""
     tracked = subprocess.run(['git', 'ls-files', '--error-unmatch', '--', '.env.local'],
                              cwd=root, capture_output=True)
     if tracked.returncode == 0:
         raise ValueError('.env.local is tracked; remove it from tracking before pulling service values')
     if tracked.returncode != 1:
         raise ValueError('Cannot check whether .env.local is tracked')
+
+
+def protect_environment(root, *, repair):
+    """Keep the final artifact and interrupted staging out of commits and review."""
+    reject_tracked_environment(root)
     result = subprocess.run(['git', 'rev-parse', '--git-path', 'info/exclude'],
                             cwd=root, capture_output=True, text=True)
     if result.returncode:
@@ -137,6 +142,15 @@ def protect_environment(root, *, repair):
         raise ValueError('.env.local must be ignored by Git; run setup or remove conflicting ignore overrides')
 
 
+def create_link(link, project):
+    """Publish complete JSON atomically without replacing a concurrent link."""
+    link.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.project-', dir=link.parent) as temporary:
+        staged = Path(temporary) / 'project.json'
+        staged.write_text(json.dumps(project) + '\n')
+        os.link(staged, link)
+
+
 def prepare(root, dev, *, doctor=False):
     root = Path(root)
     path = root / '.env.local'
@@ -148,17 +162,20 @@ def prepare(root, dev, *, doctor=False):
         if doctor:
             if stat.S_IMODE(path.stat().st_mode) != 0o600:
                 raise ValueError('.env.local must have mode 0600; run ./scripts/setup')
-        else:
-            path.chmod(0o600)
-    protect_environment(root, repair=not doctor)
+    reject_tracked_environment(root)
     link = root / '.vercel/project.json'
+    missing = not link.exists() and not link.is_symlink()
     try:
         project = json.loads(link.read_text())
         linked = all(isinstance(project.get(key), str) and project[key] for key in ('projectId', 'orgId'))
     except (OSError, ValueError, AttributeError):
         linked = False
-    if not linked:
-        raise ValueError('Vercel project link missing or invalid; link the existing project with vercel link before setup')
+    if missing and link.parent.is_symlink():
+        raise ValueError('Cannot create Vercel project link in a symlinked .vercel directory')
+    if missing and not doctor:
+        project = {key: dev['vercel'][key] for key in ('projectId', 'orgId')}
+    elif not linked:
+        raise ValueError('Vercel project link missing or invalid; run setup to create a missing link or correct an invalid link separately')
     for key in ('projectId', 'orgId'):
         if key in dev['vercel'] and project[key] != dev['vercel'][key]:
             raise ValueError('Vercel project link mismatch for ' + key + '; link the configured existing project separately')
@@ -166,6 +183,11 @@ def prepare(root, dev, *, doctor=False):
         if os.environ.get(variable, project[key]) != project[key]:
             raise ValueError('Vercel shell project selectors conflict with the checkout link; unset them before setup')
     invoke(root, ['vercel', 'whoami'], 'Vercel login unavailable; run vercel login separately before setup')
+    if missing:
+        create_link(link, project)
+    if path.exists() and not doctor:
+        path.chmod(0o600)
+    protect_environment(root, repair=not doctor)
     old = path.read_text() if path.exists() else ''
     if doctor:
         if not path.is_file():

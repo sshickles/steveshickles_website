@@ -86,8 +86,8 @@ scripts from `localCommands` and owned doctor hooks during rollout:
 
 Keep the required affected-test mapping and other development fields alongside
 these fields. `vercel` requires `environment: development` and the expected
-`projectId`. Optional `orgId` pins the organization or team too. Audit rejects
-every `development.vercel` object missing its expected project ID, including
+`projectId` and `orgId` (nonempty organization or team ID). These are non-secret
+identifiers. Audit rejects every `development.vercel` object missing either ID, including
 repositories without Convex. Optional `requiredKeys` lists environment variable
 names that must be present and nonempty in the merged `.env.local` after a pull
 and during doctor. Missing or empty keys fail without printing values. `convex`
@@ -101,13 +101,25 @@ set optional `convex.url`, for example
 must start with the configured deployment name; verification compares the full
 URL. [Convex documents regional deployment URLs](https://docs.convex.dev/management-api/list-deployments).
 
-Setup requires an existing Vercel login and `.vercel/project.json` link with
-project and organization IDs. Setup and doctor compare the link against the
-configured project ID and optional organization ID before invoking Vercel.
-A mismatch fails with an instruction to correct the link separately; setup
-never relinks it. It runs `vercel whoami` before pulling. If login
-or link is missing, it fails with an instruction to complete that step separately.
-It never logs in, links, creates a project or prompts. Pin Vercel in `mise.toml`
+Setup requires an existing Vercel login. In a fresh worktree, setup writes a
+missing `.vercel/project.json` from the committed `projectId` and `orgId` after
+`vercel whoami` succeeds. It does not copy credentials or consult another checkout.
+An existing correct link stays untouched; an invalid or mismatching link fails
+without relinking. Doctor requires an existing matching link and never creates one.
+Conflicting shell selectors fail before service calls. Missing login fails before
+link or environment writes. Setup never runs login, creates a project or prompts.
+
+During each repository rollout, add `orgId` alongside `projectId` in
+`.repo-standard.json` and commit that configuration change on the rollout branch
+before running update. Update requires a clean checkout and validates its current
+configuration as well as any `--config` input. Read only
+these IDs from that repository's existing linked root checkout's
+`.vercel/project.json`, or inspect the existing project with `vercel project inspect`.
+Commit the IDs in the rollout PR; never copy auth files or tokens between hosts.
+Then use the normal `repository.py update` path; both commits belong in the same
+rollout PR.
+
+Pin Vercel in `mise.toml`
 and keep Convex in the locked dependencies. The adapter uses the installed
 `node_modules/.bin/convex`, never a downloader that might fetch a different CLI.
 
