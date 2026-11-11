@@ -3,13 +3,14 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 
 # Keep whole dotenv assignments, including quoted multiline values, intact.
 ASSIGNMENT = re.compile(
     r'^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*'
-    r'(?:"(?:\\.|[^"\\])*"|\'[^\']*\'|`[^`]*`|[^\r\n]*)[^\r\n]*(?:\r?\n|$)', re.M)
+    r'(?:"(?:\\[\s\S]|[^"\\])*"|\'[^\']*\'|`[^`]*`|[^\r\n]*)[^\r\n]*(?:\r?\n|$)', re.M)
 OVERRIDES = ('CONVEX_DEPLOY_KEY', 'CONVEX_DEPLOYMENT_TOKEN',
              'CONVEX_SELF_HOSTED_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY')
 
@@ -67,13 +68,24 @@ def attachment(dev):
 
 
 def validate_attachment(root, dev, text):
+    current = {key: value(raw) for key, raw in entries(text).items()}
+    for key in dev['vercel'].get('requiredKeys', []):
+        if not current.get(key, '').strip():
+            raise ValueError('Missing or empty required Vercel Development key: ' + key)
     expected = attachment(dev)
     if not expected:
         return
-    current = {key: value(raw) for key, raw in entries(text).items()}
     defaults = root / '.env'
     default_values = ({key: value(raw) for key, raw in entries(defaults.read_text()).items()}
                       if defaults.is_file() else {})
+    for target in dev['convex'].get('additionalDeployments', {}).values():
+        key = target['deployKeyVariable']
+        candidates = [current.get(key, '')]
+        candidates.extend(source[key] for source in (default_values, os.environ) if key in source)
+        for candidate in candidates:
+            prefix, separator, credential = candidate.partition('|')
+            if prefix != target['deployment'] or not separator or not credential.strip():
+                raise ValueError('Convex key ' + key + ' must target its configured dev deployment')
     for key in OVERRIDES:
         if current.get(key) or default_values.get(key) or os.environ.get(key):
             raise ValueError('Remove conflicting Convex credentials or selectors from the shell and environment files')
@@ -130,6 +142,14 @@ def prepare(root, dev, *, doctor=False):
     path = root / '.env.local'
     if path.is_symlink():
         raise ValueError('.env.local must be a checkout-owned regular file, not a symlink')
+    if path.exists():
+        if not path.is_file():
+            raise ValueError('.env.local must be a checkout-owned regular file')
+        if doctor:
+            if stat.S_IMODE(path.stat().st_mode) != 0o600:
+                raise ValueError('.env.local must have mode 0600; run ./scripts/setup')
+        else:
+            path.chmod(0o600)
     protect_environment(root, repair=not doctor)
     link = root / '.vercel/project.json'
     try:
@@ -139,6 +159,9 @@ def prepare(root, dev, *, doctor=False):
         linked = False
     if not linked:
         raise ValueError('Vercel project link missing or invalid; link the existing project with vercel link before setup')
+    for key in ('projectId', 'orgId'):
+        if key in dev['vercel'] and project[key] != dev['vercel'][key]:
+            raise ValueError('Vercel project link mismatch for ' + key + '; link the configured existing project separately')
     for variable, key in (('VERCEL_PROJECT_ID', 'projectId'), ('VERCEL_ORG_ID', 'orgId')):
         if os.environ.get(variable, project[key]) != project[key]:
             raise ValueError('Vercel shell project selectors conflict with the checkout link; unset them before setup')
