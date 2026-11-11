@@ -28,28 +28,17 @@ This website is hosted on GitHub Pages with:
 ├── error.html              # 404 error page
 ├── CNAME                   # Custom domain configuration
 └── .github/workflows/      # GitHub Actions for automated deployment
-    └── deploy-github-pages.yml
+    └── static.yml
 ```
 
 ## Development Workflow
 
-1. **Make changes on dev branch**:
-   ```bash
-   git checkout dev
-   # Make your changes
-   git add .
-   git commit -m "Your commit message"
-   git push origin dev
-   ```
+Use a task branch and pull request targeting `dev`. Run `./scripts/setup`,
+`./scripts/check`, `./scripts/test` and `./scripts/review` before pushing.
+See [repository instructions](AGENTS.md) for the shared workflow.
 
-2. **Deploy to production**:
-   ```bash
-   git checkout master
-   git merge dev
-   git push origin master
-   ```
-
-The GitHub Actions workflow automatically deploys to GitHub Pages when you push to master.
+The existing Pages workflow deploys from `master`. Production deployment is a
+separate owner-authorized operation; merging a PR into `dev` does not deploy.
 
 ## Custom Domain Setup
 

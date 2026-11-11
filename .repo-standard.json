@@ -1,0 +1,57 @@
+{
+  "version": 2,
+  "repository": "sshickles/steveshickles_website",
+  "profile": "custom",
+  "git": {
+    "remote": "origin",
+    "baseBranch": "dev"
+  },
+  "validation": [
+    [
+      "actionlint"
+    ],
+    [
+      "bash",
+      "scripts/lint-shell"
+    ]
+  ],
+  "integrations": {
+    "deploymentCheck": null,
+    "greptile": true
+  },
+  "review": {
+    "coderabbit": true
+  },
+  "development": {
+    "environment": "none",
+    "requiredFiles": [],
+    "localCommands": [],
+    "dependencies": {
+      "lockfile": "mise.toml",
+      "install": [
+        "python3",
+        "scripts/setup-static.py"
+      ],
+      "artifacts": [
+        ".cache/tools/actionlint"
+      ]
+    }
+  },
+  "conventions": {
+    "branchPattern": "^(feat|fix|docs|chore|ci|refactor|prototype|research)/[a-z0-9]+(-[a-z0-9]+)*$",
+    "issueReadiness": "No readiness label is required. See docs/agents/repository.md.",
+    "claiming": "Check for an assignee or existing PR before starting; follow the destination issue policy."
+  },
+  "ciChecks": [
+    {
+      "context": "checks",
+      "integration_id": 15368
+    }
+  ],
+  "testCommand": [
+    "python3",
+    "scripts/repository.py",
+    "validate",
+    "."
+  ]
+}

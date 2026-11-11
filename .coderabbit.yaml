@@ -1,0 +1,45 @@
+# CodeRabbit reviews locally before PR creation. Greptile reviews on GitHub.
+# CLI reviews still use the path filters and instructions below.
+language: "en-US"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  review_status: true
+  review_progress: false
+  commit_status: false
+  collapse_walkthrough: true
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/.next/**"
+    - "!**/coverage/**"
+    - "!**/generated/**"
+    - "!**/_generated/**"
+    - "!**/*.snap"
+    - "!**/*.min.js"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Follow AGENTS.md and the ADRs under docs/adr where present.
+        Report concrete production risks: correctness, auth and authorization,
+        data integrity, customer-data exposure, race conditions, broken
+        contracts, missing validation, missing tests for changed behaviour.
+        Skip style, formatting, naming preferences and speculative refactors.
+
+  auto_review:
+    enabled: false
+    drafts: false
+    auto_incremental_review: false
+    auto_pause_after_reviewed_commits: 0
+    labels: []
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    ignore_usernames: []

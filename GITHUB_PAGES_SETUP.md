@@ -48,22 +48,10 @@ If you want to use steveshickles.com:
 
 ### 3. Deployment
 
-The site will automatically deploy when you push to the master branch:
-
-```bash
-# Make changes on dev branch
-git checkout dev
-# ... make your changes ...
-git add .
-git commit -m "Your changes"
-git push origin dev
-
-# Merge to master to deploy
-git checkout master
-git merge dev
-git push origin master
-```
-
+The existing `static.yml` workflow deploys on pushes to `master` or manual
+workflow dispatch. Development uses task branches and reviewed PRs targeting
+`dev`; follow [repository instructions](AGENTS.md). Production deployment and
+live hosting configuration changes require explicit owner authorization.
 
 ## URLs
 
@@ -89,10 +77,7 @@ Once GitHub Pages is enabled:
 - Check that the master branch is selected as source
 - Verify the workflow completed successfully
 
-## Development Workflow
+## Development workflow
 
-1. **Development**: Work on the `dev` branch
-2. **Testing**: Push to `dev` to test changes locally
-3. **Production**: Merge to `master` to deploy to GitHub Pages
-
-The GitHub Actions workflow will automatically deploy to GitHub Pages whenever you push to master.
+See [repository instructions](AGENTS.md) for setup, checks, review and PRs.
+The `dev` branch is the default; the existing deployment trigger remains `master`.
