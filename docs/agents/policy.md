@@ -1,8 +1,8 @@
 <!-- Generated. Do not edit. -->
 Canonical repository: sshickles/repo-standard
-Canonical revision: bd0e86af269b080ce17962d6f75e60a52b0a6b64
+Canonical revision: 77f949426baddf35d8420036a1b53e42a9e0535c
 Canonical source: policy/policy.md
-SHA-256: dfc6ff983bd03a0324666556378b3b82ac50683866a583ddfa32bb7a179d5047
+SHA-256: 9b4940e326a3e76cf5841c6cd50c114431d4220278b98d214c7cb2ef61f9acd7
 
 # Shared engineering policy
 
@@ -121,16 +121,20 @@ setup approval gate; all initializers must be idempotent and non-deploying.
 Repositories with `convex/` must configure `development.convex` with an explicit
 shared cloud dev deployment and `development.vercel` for Development pulls.
 Missing attachment configuration is audit drift. Setup requires existing Vercel
-login and link, pulls Development values, and attaches the named deployment
+login, creates a missing checkout link from committed project and organization IDs,
+and pulls Development values, and attaches the named deployment
 without changing unrelated environment keys. It verifies the actual deployment
 read-only and fails on mismatch. Never provision a deployment, create a project,
 push functions or print environment values during setup. Identical attachment
 reruns do not rewrite the artifact. Use the template adapter rather than local
 service scripts (owner approval: Steve, 2026-11-11). Protect the final environment
 artifact and temporary pulls from Git and review input before pulling values.
-Every `development.vercel` requires the expected `projectId`; optional `orgId`
-also pins the team. Verify the link before any pull and fail on mismatch without
-relinking. Optional `requiredKeys` lists keys that setup and doctor require to
+Every `development.vercel` requires the expected non-secret `projectId` and
+`orgId`. Verify existing links before service calls and fail on invalid or
+mismatching links without relinking. Create only missing links, after existing
+login succeeds; never copy credentials or run login. Doctor never creates links.
+Rollout PRs add both IDs from the repository's existing linked checkout or project
+inspection. Audit flags either missing ID. Optional `requiredKeys` lists keys that setup and doctor require to
 be nonempty in the merged artifact. Setup enforces mode 0600 on every run,
 including unchanged artifacts; doctor rejects any other mode. Optional
 `development.convex.additionalDeployments` maps names to objects containing an

@@ -54,7 +54,7 @@ def read_config(path):
                 or set(vercel) - {'environment', 'projectId', 'orgId', 'requiredKeys'}
                 or not isinstance(vercel.get('projectId'), str) or not vercel['projectId'].strip()):
             raise ValueError('development.vercel requires environment: development and an explicit projectId')
-        if 'orgId' in vercel and (not isinstance(vercel['orgId'], str) or not vercel['orgId'].strip()):
+        if not isinstance(vercel.get('orgId'), str) or not vercel['orgId'].strip():
             raise ValueError('development.vercel.orgId must be a nonempty organization or team ID')
         required_keys = vercel.get('requiredKeys', [])
         if not isinstance(required_keys, list) or any(
