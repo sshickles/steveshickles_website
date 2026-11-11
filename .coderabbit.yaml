@@ -1,3 +1,4 @@
+# repo-standard: canonical-agent-files
 # CodeRabbit reviews locally before PR creation. Greptile reviews on GitHub.
 # CLI reviews still use the path filters and instructions below.
 language: "en-US"
@@ -15,9 +16,11 @@ reviews:
 
   path_filters:
     # repo-standard: managed-path-filters
+    - "!.claude/settings.json"
     - "!.coderabbit.yaml"
     - "!.githooks/pre-push"
     - "!.repo-standard-source.json"
+    - "!AGENTS.md"
     - "!CLAUDE.md"
     - "!apply-ruleset.sh"
     - "!docs/agents/policy.md"

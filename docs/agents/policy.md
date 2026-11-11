@@ -1,8 +1,8 @@
 <!-- Generated. Do not edit. -->
 Canonical repository: sshickles/repo-standard
-Canonical revision: e360388e2628a0b6d93e4fc3fbc608c470dbda93
+Canonical revision: eb89de12a414b97a8862cd8496113bcfe3f0e6ee
 Canonical source: policy/policy.md
-SHA-256: bef29603be51b34f60f23933f99e98a4923be2a1e63f12b34a4e58dc6085a510
+SHA-256: 04e97c653c3aa1c7fffc2fb85e2f2e335eb26bec4e184517304ab62da8abbd32
 
 # Shared engineering policy
 
@@ -44,6 +44,13 @@ and tool versions; configuration ownership; local runtime setup; verification;
 deployment and recovery; approved exceptions. Only explicit owner-approved
 exceptions override shared policy. Record reason, scope and approval reference.
 Pre-existing contradictions are not exceptions.
+
+Keep `AGENTS.md` and `.claude/settings.json` byte-identical to their canonical
+renderings. Only repository identity and default-branch substitutions may vary;
+no repository-specific settings entries survive updates. Repository-specific
+guidance belongs in `docs/agents/repository.md`. This exact-match requirement
+also applies when auditing older locks that previously allowed local settings
+entries (owner approval: Steve, 2026-11-11); update replaces those entries.
 
 Keep other instruction files as thin adapters to `AGENTS.md`. Preserve necessary
 tool configuration and useful product, architecture and operational docs. Move
@@ -115,9 +122,10 @@ Check runs all required locally executable validation, including tests and
 policy integrity. CI calls it without arguments and keeps the full suite as
 the required merge gate. Pre-push uses its hook mode for fast checks and affected
 tests, with conservative full-suite fallbacks. External Greptile checks remain
-separate. Test runs the documented suite. Review uses the configured local
-CodeRabbit runner or clearly directs an independent review fallback. It must
-exit nonzero on unavailability or findings, never silently skip review.
+separate. Test runs the documented suite. Review runs CodeRabbit first; if it is
+missing, fails or times out, it runs an independent model reviewer (Codex, Claude or similar, distinct base model where
+available). It exits 0 when a reviewer certifies the change clean, 1 for findings
+and 2 when no reviewer could run; it never silently skips review.
 
 ## Checks, hooks and review
 
@@ -140,19 +148,24 @@ pre-push checks still run after the common checks.
 Prefer `~/.local/bin/cr-auto` or the appropriate configured
 `cr-as <bbl|pp|rsp|ss|wca>` profile. Discover equivalent supported host setup.
 Report authentication failures without credentials and never attempt browser
-login over SSH. When unavailable, use an authorized independent tool or reviewer
-under the independence rules above. Follow the shared
+login over SSH. If CodeRabbit is missing, fails, times out or cannot certify a
+complete result, run an authorized independent model reviewer under the
+independence rules above. Iterate until that reviewer certifies the updated
+commit clean. Follow the shared
 [review checklist](review-checklist.md) for correctness, regressions, security,
 failure paths, meaningful verification and policy compliance.
 
 Fix findings and repeat review until clear. Resolve disputed findings with
-evidence. Obtain a clean review of the updated change before every push and
-record fallback use. A successful process exit alone does not prove a clean
-review transcript. Record what was reviewed and remaining limitations.
+evidence. Review the updated change before every push and record fallback use.
+A successful process exit alone does not prove a clean review transcript. Record what was reviewed and remaining limitations.
+
+Local review never blocks push or PR creation. Fix findings from a reviewer
+that ran. If no reviewer could run, record that in the PR and let Greptile do
+the final review. Only required CI checks and the Greptile gate block merge.
 
 ## PR and merge workflow
 
-1. Complete local checks and independent review.
+1. Complete local checks and local review (CodeRabbit, or the model reviewer fallback).
 2. Commit and push through the installed hook.
 3. Open a ready PR. Verify that server-side protections enforce the required
    checks and current-head Greptile 5/5 approval, then immediately enable native

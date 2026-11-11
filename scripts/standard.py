@@ -1,7 +1,6 @@
 """Offline, revision-bound rendering. Git object hashes authenticate embedded source."""
 import base64
 import difflib
-import fnmatch
 import hashlib
 import json
 import os
@@ -30,11 +29,12 @@ def runtime_files(output):
 
 
 REVIEW_SCOPE_MARKER = '    # repo-standard: managed-path-filters\n'
+AGENT_FILES_MARKER = '# repo-standard: canonical-agent-files\n'
 
 
 def canonical_managed_files(output):
-    """Exact vendored outputs; mixed/local integrations must remain reviewable."""
-    local = {'AGENTS.md', '.claude/settings.json', 't3.json'}
+    """Exact vendored outputs; stack-specific integrations remain reviewable."""
+    local = {'t3.json'}
     return sorted(name for name in output
                   if name not in local and not name.startswith('.github/workflows/'))
 
@@ -146,6 +146,10 @@ def render(data, config):
         output.pop('.github/workflows/ci.yml', None)
     if REVIEW_SCOPE_MARKER in files['.coderabbit.yaml'] and config['repository'].lower() != CANONICAL:
         managed = canonical_managed_files(output)
+        # A recorded revision must keep the filters its renderer shipped, so
+        # existing installs validate before update replaces both review configs.
+        if AGENT_FILES_MARKER not in files['.coderabbit.yaml']:
+            managed = [name for name in managed if name not in ('AGENTS.md', '.claude/settings.json')]
         filters = ''.join('    - ' + json.dumps('!' + name) + '\n' for name in managed)
         output['.coderabbit.yaml'] = output['.coderabbit.yaml'].replace(
             REVIEW_SCOPE_MARKER, REVIEW_SCOPE_MARKER + filters)
@@ -192,7 +196,7 @@ def validate_existing_ci(path, config):
         raise ValueError('existingCI job requires a standalone run: ./scripts/check step')
 
 
-def validate(path, *, repair_missing_runtime=False):
+def validate(path, *, repair_missing_runtime=False, repair_agent_settings=False):
     from development import read_config
     path = Path(path).resolve()
     config = read_config(path / '.repo-standard.json')
@@ -227,19 +231,12 @@ def validate(path, *, repair_missing_runtime=False):
     for name in ('ruleset.json', 'greptile.json'):
         if json.loads((path / name).read_text()) != json.loads(expected[name]):
             raise ValueError(f'Configuration drift: {name}')
-    actual_settings = json.loads((path / '.claude/settings.json').read_text())
-    required_settings = json.loads(expected['.claude/settings.json'])
-    for kind in ('allow', 'deny'):
-        if not set(required_settings['permissions'][kind]).issubset(actual_settings.get('permissions', {}).get(kind, [])):
-            raise ValueError('Configuration drift: .claude/settings.json permissions')
-    for rule in actual_settings['permissions']['deny']:
-        if blocks_native_merge(rule):
-            raise ValueError('Permission denial shadows native auto-merge')
+    for name in ('AGENTS.md', '.claude/settings.json'):
+        if not repair_agent_settings and (not (path / name).is_file()
+                or (path / name).read_bytes() != expected[name].encode()):
+            raise ValueError('Canonical-managed file drift: ' + name)
     if (path / '.coderabbit.yaml').read_text() != expected['.coderabbit.yaml']:
         raise ValueError('Configuration drift: .coderabbit.yaml')
-    entry = (path / 'AGENTS.md').read_text()
-    if any(link not in entry for link in ('docs/agents/policy.md', 'docs/agents/repository.md')):
-        raise ValueError('AGENTS.md must link both policy and repository instructions')
     headings = re.findall(r'^## (.+)$', (path / 'docs/agents/repository.md').read_text(), re.M)
     if headings != SECTIONS:
         raise ValueError('repository.md must have exactly the seven required sections in order')
@@ -258,6 +255,8 @@ def validate(path, *, repair_missing_runtime=False):
     # Older locks predate this contract and keep their existing validation rules.
     if REVIEW_SCOPE_MARKER in data['files']['.coderabbit.yaml']:
         for name in canonical_managed_files(expected):
+            if repair_agent_settings and name in ('AGENTS.md', '.claude/settings.json'):
+                continue
             if name in (LOCK, 'ruleset.json', 'greptile.json'):
                 continue  # Git proofs and structured JSON checks cover these below.
             target = path / name
@@ -277,31 +276,6 @@ def validate(path, *, repair_missing_runtime=False):
         raise ValueError('Hook installation missing: run ./scripts/setup')
     print(f'Policy and required structure valid at {data["revision"]}')
     return data
-
-
-def blocks_native_merge(rule):
-    if rule == 'Bash':
-        return True
-    if not rule.startswith('Bash('):
-        return False
-    pattern = rule[5:-1].replace(':*', ' *')
-    return any(fnmatch.fnmatchcase(cmd, pattern) for cmd in (
-        'gh pr merge 123 --auto --squash', 'gh pr merge 123 --disable-auto'))
-
-
-def merge_settings(existing, desired, previous=None):
-    merged = json.loads(existing)
-    wanted = json.loads(desired)
-    old = json.loads(previous) if previous else {'permissions': {}}
-    permissions = merged.setdefault('permissions', {})
-    for kind in ('allow', 'deny'):
-        retained = [rule for rule in permissions.get(kind, [])
-                    if rule not in old.get('permissions', {}).get(kind, [])]
-        if kind == 'deny':
-            retained = [rule for rule in retained if not blocks_native_merge(rule)
-                        and not any(value in rule for value in ('vercel --prod', 'convex deploy', '--run-prod'))]
-        permissions[kind] = list(dict.fromkeys(retained + wanted['permissions'][kind]))
-    return json_text(merged)
 
 
 def target_path(path, name):
@@ -329,25 +303,15 @@ def plan(path, data, config):
     t3 = target_path(path, 't3.json')
     if canonical and t3.exists():
         output['t3.json'] = json_text(merge(json.loads(t3.read_text()), canonical))
-    settings = path / '.claude/settings.json'
-    if settings.exists():
-        previous = None
-        if (path / LOCK).exists():
-            from development import read_config
-            recorded = path / '.repo-standard.json'
-            previous_config = read_config(recorded) if recorded.exists() else config
-            previous = render(json.loads((path / LOCK).read_text()), previous_config)['.claude/settings.json']
-        output['.claude/settings.json'] = merge_settings(
-            settings.read_text(), output['.claude/settings.json'], previous)
     if not (path / 'docs/agents/repository.md').exists():
         output['docs/agents/repository.md'] = data['files']['policy/repository.md']
     changed = {}
     for name, value in output.items():
         target = target_path(path, name)
-        old = target.read_text() if target.exists() else ''
+        old = target.read_bytes() if target.exists() else b''
         if name == '.repo-standard.json' and old and json.loads(old) == config:
             continue
-        if old != value or name in EXECUTABLES and not os.access(path / name, os.X_OK):
+        if old != value.encode() or name in EXECUTABLES and not os.access(path / name, os.X_OK):
             changed[name] = value
     return changed
 
@@ -360,7 +324,7 @@ def update(path, source, revision, config, apply=False, *, strict=False):
     for row in audit(target_path(path, 't3.json'), definitions(data['files'])):
         print(json.dumps(row, sort_keys=True))
     if (path / LOCK).exists():
-        previous = validate(path, repair_missing_runtime=not strict)
+        previous = validate(path, repair_missing_runtime=not strict, repair_agent_settings=not strict)
     else:
         previous = None
     changes = plan(path, data, config)
@@ -372,7 +336,7 @@ def update(path, source, revision, config, apply=False, *, strict=False):
         # Keep local integrations only where the new revision permits overrides.
         # Newly integrity-locked files must reach the conflict check before writes.
         for name in list(changes):
-            if ((path / name).exists() and name not in ('.claude/settings.json', '.repo-standard.json')
+            if ((path / name).exists() and name not in ('AGENTS.md', '.claude/settings.json', '.repo-standard.json')
                     and name not in managed
                     and old_output.get(name) == changes[name]):
                 del changes[name]
@@ -393,12 +357,12 @@ def update(path, source, revision, config, apply=False, *, strict=False):
     if not previous:
         conflicts = [name for name, value in changes.items()
                      if (path / name).exists() and (path / name).read_text() != value
-                     and name not in ('.repo-standard.json', '.claude/settings.json', 't3.json')]
+                     and name not in ('.repo-standard.json', 'AGENTS.md', '.claude/settings.json', 't3.json')]
         if conflicts:
             raise ValueError('Adoption conflicts require manual integration before apply: ' + ', '.join(conflicts))
     if previous:
         conflicts = [name for name in changes
-                     if name not in ('.claude/settings.json', '.repo-standard.json', 't3.json') and (path / name).exists()
+                     if name not in ('AGENTS.md', '.claude/settings.json', '.repo-standard.json', 't3.json') and (path / name).exists()
                      and (path / name).read_text() != changes[name]
                      and (name not in old_output or (path / name).read_text() != old_output[name])]
         if conflicts:

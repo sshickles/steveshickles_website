@@ -60,8 +60,8 @@ def read_config(path):
     mapping = dev.get("changedTestCommand")
     if mapping is not None:
         if (not isinstance(mapping, dict) or set(mapping) != {"kind", "command"}
-                or mapping["kind"] not in ("vitest", "pytest")):
-            raise ValueError("development.changedTestCommand requires kind (vitest or pytest) and command")
+                or mapping["kind"] not in ("vitest", "pytest", "unittest")):
+            raise ValueError("development.changedTestCommand requires kind (vitest, pytest or unittest) and command")
     if mapping is not None and mapping["kind"] == "vitest":
         runner = mapping["command"]
         if (not isinstance(runner, list) or not runner or runner[-1] != "vitest"
@@ -70,6 +70,11 @@ def read_config(path):
     if (mapping is not None and mapping["kind"] == "pytest"
             and mapping["command"] != config["testCommand"]):
         raise ValueError("Pytest mapping command must equal testCommand, including all suite options")
+    if mapping is not None and mapping["kind"] == "unittest":
+        runner = mapping["command"]
+        if (not isinstance(runner, list) or len(runner) < 3 or runner[-2:] != ["-m", "unittest"]
+                or config["testCommand"][:len(runner) + 1] != [*runner, "discover"]):
+            raise ValueError("Unittest mapping must end in -m unittest and testCommand must start with that command plus discover")
     globs = dev.get("sharedInfrastructureGlobs", [])
     if not isinstance(globs, list) or any(
         not isinstance(g, str) or not g or Path(g).is_absolute() or ".." in Path(g).parts
