@@ -108,10 +108,9 @@ python3 scripts/repository.py adopt /path/to/task --config /tmp/repository.json 
 
 The default is a report with unified diffs. Apply requires a clean checkout,
 verifies the destination's configured fetch and push URLs and refuses conflicts
-before writing. It preserves repository.md, unrelated workflows, unrelated permission settings
-and other files.
-Existing workflow, hook, permission or instruction conflicts require explicit
-manual integration on the task branch. Do not replace an application's CI or
+before writing. It preserves repository.md, unrelated workflows and application
+files. Canonical AGENTS.md and settings replace local variants. Existing workflow
+and hook conflicts require explicit manual integration on the task branch. Do not replace an application's CI or
 hook manager blindly. Keep stack setup underneath the four command interfaces,
 run check in its real CI job and preserve other responsibilities. For a custom
 stack, adjust validation, test command and pinned tooling deliberately before
@@ -187,7 +186,7 @@ disable coverage collection so global coverage thresholds cannot reject a partia
 suite. Full checks and full-suite fallbacks keep coverage enforcement. No relevant
 files means no tests when the changes contain only conventional documentation.
 Unknown inputs such as JSON fixtures, runtime assets and templates trigger the
-full suite in both mappings. Documentation-only paths are root `README*`,
+full suite in all mappings. Documentation-only paths are root `README*`,
 `CHANGELOG*`, `LICENSE*`, `COPYING*`, `AUTHORS*`, `CONTRIBUTING*`, and `docs/**`.
 Add any documentation consumed at runtime to `sharedInfrastructureGlobs`, which
 takes precedence over this skip list. Deleted source or test files trigger the full suite.
@@ -198,6 +197,19 @@ filesystem reads, or other dependencies outside Vitest's graph to
 `sharedInfrastructureGlobs`. For example, `["src/plugins/**", "fixtures/**"]`
 forces full tests when those inputs change. The template cannot infer these
 application-specific paths. CI remains the complete-suite gate.
+
+For unittest, use `{"kind":"unittest","command":["python3","-B","-m","unittest"]}`.
+The mapping command must end in `-m unittest`; `testCommand` must start with
+that command plus `discover`, for example
+`["python3","-B","-m","unittest","discover","-s","tests"]`.
+Only changed `test_*.py` or `*_test.py` files select dotted module names.
+Discovery's `-s` start directory, `-t` import root and `-p` pattern are respected.
+The hook adds the import root to the child process's `PYTHONPATH`. Ambiguous
+imports, missing package markers, package or module `load_tests` hooks,
+interpreter isolation flags (`-I` or `-E`), unsupported options and
+tests outside discovery fall back to the full command. Python source changes,
+deletions, shared infrastructure, unclassified inputs and changed test modules
+referenced elsewhere also run the full suite.
 
 For pytest, use `{"kind": "pytest", "command": ["python3", "-m", "pytest"]}`.
 The mapping's `command` must equal `testCommand`, including marker, plugin and
@@ -213,7 +225,7 @@ References to a changed test module's name in other tracked Python files trigger
 the full suite. Declare dynamically shared test modules in infrastructure globs
 when their names are assembled at runtime. Changes to Python modules
 or helpers fall back to `testCommand`: a matching test filename cannot establish
-coverage of the module's callers. Missing mappings, unittest and other runners
+coverage of the module's callers. Missing mappings and other runners
 also use `testCommand`. The default mapping is absent, preserving custom suites.
 
 The base is the merge-base of the pushed commit with `origin/<default branch>`.
@@ -274,9 +286,15 @@ in the canonical repository, so destination exclusions include both.
 
 Repository instructions, `.repo-standard.json`, mise pins, application code,
 repository CI workflows, custom scripts, `.githooks/pre-push.d/*` and
-`.githooks/doctor.d/*` remain in scope. Mixed local integrations such as `t3.json`,
-`AGENTS.md` and `.claude/settings.json` also stay in scope. Existing in-scope
-finding, warning and unavailable-review gates remain unchanged. Use the current
+`.githooks/doctor.d/*` remain in scope. `t3.json` stays in scope because its runtime actions may vary by stack.
+`AGENTS.md` and `.claude/settings.json` are canonical-managed outputs. Audit and
+check reject any byte drift. Update replaces them exactly, removing all local
+settings entries. The settings deny rules render the configured default branch,
+including `master` or `dev`, deterministically. Put repository-specific guidance
+in `docs/agents/repository.md`. Local review uses the model fallback when needed;
+only required CI checks and the Greptile gate block merge. Recorded revisions
+keep their original reviewer filters so existing installs can validate and
+upgrade; update installs the new filters with the canonical agent files. Use the current
 canonical updater to generate both reviewer configs; do not hand-copy ignore lists
 or edit excluded runtime files. Put service-specific behavior in the owned hooks.
 
@@ -323,8 +341,12 @@ consistent older revision. They never fetch, reset or rewrite the target. Fetch
 the canonical source separately. Apply requires a clean task checkout, refuses
 local changes conflicting with prior generated files and differing existing
 application files at paths the new revision first manages. Integrate these
-collisions manually on the task branch before retrying.
-Local integrations are preserved when the canonical file is unchanged between
+collisions manually on the task branch before retrying. AGENTS.md and
+`.claude/settings.json` are replaced exactly, including when they have drifted.
+Exact agent-file validation also applies to older locks: previously allowed local
+settings entries are drift and must be replaced by update. A newer canonical
+revision alone still means "update available."
+Other local integrations are preserved when the canonical file is unchanged between
 the recorded and selected revisions. Shared commands and the hook still require
 exact content from the recorded revision. The caller selects the
 reviewed canonical revision; ancestry is not required because native squash
@@ -428,8 +450,10 @@ Creation refuses an existing destination. After partial failure, retain the
 created repository and local checkout, inspect the error, and resume adoption
 or setup instead of rerunning creation or deleting work. Setup refuses an
 unrelated hook manager and reports missing prerequisites without secret output.
-Review uses configured local profiles without probing credentials; unavailable
-or failed review directs the independent fallback and exits nonzero.
+Review tries the configured local profile without probing credentials, then runs
+a model fallback if needed. It exits 0 for certified clean, 1 for findings and
+2 when no reviewer could run or produce a verdict. Record unavailable review in
+the PR and proceed; required CI checks and the Greptile gate control merge.
 
 For worktree cleanup, check active users and processes, ignored/untracked files,
 unpublished commits and the final PR head. Preserve uncertain data and remove

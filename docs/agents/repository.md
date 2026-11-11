@@ -18,8 +18,9 @@ There are no Node or package-manager requirements. The custom-stack setup adapte
 uses mise.toml as its exact version manifest and exposes the verified actionlint
 executable at ignored `.cache/tools/actionlint`; there are no application
 dependencies. The canonical generator currently requires this adapter even for
-a dependency-free static site. Review uses the configured
-local CodeRabbit runner. CI runs `./scripts/check` in the `checks` job.
+a dependency-free static site. Review tries the configured local CodeRabbit runner first, then an independent
+model reviewer if needed. Local review does not block push or PR creation;
+required CI and the Greptile gate control merge. CI runs `./scripts/check` in the `checks` job.
 
 ## Configuration ownership
 

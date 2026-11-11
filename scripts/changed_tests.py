@@ -116,7 +116,85 @@ def pytest_requires_full(root, command):
     return False
 
 
+def unittest_scope(root, full, runner):
+    """Resolve discovery's import root; reject options we cannot preserve safely."""
+    if full[:len(runner)] != runner:
+        raise ValueError('unittest command differs from the mapping')
+    if any(arg.startswith('-') and not arg.startswith('--') and any(flag in arg[1:] for flag in 'IE')
+           for arg in runner[:-2]):
+        raise ValueError('unittest interpreter options ignore the selected import path')
+    arguments = full[len(runner):]
+    if arguments[:1] != ['discover']:
+        raise ValueError('unittest selection requires discover')
+    start, top, pattern, options = '.', None, 'test*.py', []
+    index = 1
+    while index < len(arguments):
+        arg = arguments[index]
+        index += 1
+        key, equals, value = arg.partition('=')
+        if key in ('-s', '--start-directory', '-t', '--top-level-directory', '-p', '--pattern'):
+            if not equals:
+                if index == len(arguments):
+                    raise ValueError('missing unittest discovery option value')
+                value = arguments[index]
+                index += 1
+            if key in ('-s', '--start-directory'):
+                start = value
+            elif key in ('-t', '--top-level-directory'):
+                top = value
+            else:
+                pattern = value
+        elif arg in ('-v', '--verbose', '-q', '--quiet', '-f', '--failfast',
+                     '-b', '--buffer', '-c', '--catch'):
+            options.append(arg)
+        else:
+            raise ValueError('unsupported unittest discovery option')
+    start = (root / start).resolve()
+    top = (root / top).resolve() if top is not None else start
+    if not start.is_relative_to(top) or not top.is_relative_to(root) or not start.is_dir():
+        raise ValueError('unittest discovery paths are outside the checkout or missing')
+    # discover prepends top to sys.path, while python -m leaves the checkout
+    # first. Collisions in helpers as well as selected modules make that unsafe.
+    if top != root:
+        for entry in top.iterdir():
+            if entry.suffix == '.py' or (entry.is_dir() and (entry / '__init__.py').is_file()):
+                module = entry.stem if entry.is_file() else entry.name
+                if (root / module).exists() or (root / (module + '.py')).exists():
+                    raise ValueError('unittest import is shadowed at the checkout root')
+    # Discovery calls load_tests hooks which direct module loading would bypass.
+    for name in filter(None, git(root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '*__init__.py').split('\0')):
+        package = root / name
+        if not package.is_file():
+            continue
+        if package.is_relative_to(start) or package.parent in start.parents or package.parent == start:
+            if 'load_tests' in package.read_text():
+                raise ValueError('unittest discovery uses load_tests')
+    return start, top, pattern, options
+
+
+def unittest_modules(root, full, runner, selected):
+    start, top, pattern, options = unittest_scope(root, full, runner)
+    modules = []
+    for name in sorted(selected):
+        path = (root / name).resolve()
+        if not path.is_relative_to(start) or not fnmatch.fnmatchcase(path.name, pattern):
+            raise ValueError('changed test is outside unittest discovery')
+        if 'load_tests' in path.read_text():
+            raise ValueError('unittest test module uses load_tests')
+        relative = path.relative_to(top).with_suffix('')
+        if not all(part.isidentifier() for part in relative.parts):
+            raise ValueError('unittest module name is not importable')
+        for parent in path.parents:
+            if parent == top:
+                break
+            if not (parent / '__init__.py').is_file():
+                raise ValueError('unittest package is missing __init__.py')
+        modules.append('.'.join(relative.parts))
+    return [*runner, *options, *modules]
+
+
 def select_tests(root, config, files, reason):
+    root = Path(root).resolve()
     dev = config['development']
     mapping = dev.get('changedTestCommand')
     full = list(config['testCommand'])
@@ -168,12 +246,12 @@ def select_tests(root, config, files, reason):
     if not selected:
         return [], 'no changed relevant files; no tests'
     try:
-        if pytest_requires_full(root, config['testCommand']):
+        if kind == 'pytest' and pytest_requires_full(root, config['testCommand']):
             return fallback('pytest coverage, discovery or custom configuration requires the full command')
         # Searching tracked Python text also catches literal dynamic imports and
         # relative imports without needing to infer the destination's sys.path.
         modules = {Path(name).stem for name in selected}
-        for name in filter(None, git(root, 'ls-files', '-z', '--', '*.py').split('\0')):
+        for name in filter(None, git(root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '*.py').split('\0')):
             if name in selected or not (root / name).is_file():
                 continue
             text = (root / name).read_text()
@@ -181,10 +259,17 @@ def select_tests(root, config, files, reason):
                 return fallback('changed test module referenced by ' + name)
     except (ValueError, OSError, UnicodeError):
         return fallback('cannot determine Python test-module dependents')
+    if kind == 'unittest':
+        try:
+            command = unittest_modules(root, full, mapping['command'], selected)
+        except (ValueError, OSError, UnicodeError) as error:
+            return fallback(str(error))
+        return command, 'changed unittest modules: ' + reason
     return [*mapping['command'], *('./' + name for name in sorted(selected))], 'changed pytest files: ' + reason
 
 
 def run(root, config, commits):
+    root = Path(root).resolve()
     files, reason = changed_files(root, commits)
     command, message = select_tests(root, config, files, reason)
     print('Pre-push: ' + message, flush=True)
@@ -192,6 +277,15 @@ def run(root, config, commits):
         return 0
     environment = {**os.environ, 'MISE_AUTO_INSTALL': '0'}
     mapping = config['development'].get('changedTestCommand')
+    if mapping and mapping['kind'] == 'unittest' and message.startswith('changed unittest modules:'):
+        try:
+            _, top, _, _ = unittest_scope(root, config['testCommand'], mapping['command'])
+        except (ValueError, OSError, UnicodeError):
+            command = list(config['testCommand'])
+            print('Pre-push: full tests: unittest import scope became unavailable', flush=True)
+        else:
+            environment['PYTHONPATH'] = str(top) + (os.pathsep + environment['PYTHONPATH']
+                                                    if environment.get('PYTHONPATH') else '')
     if mapping and mapping['kind'] == 'vitest':
         workers = command[command.index('--maxWorkers') + 1]
         # Vitest 3 pool-specific bounds take precedence over maxWorkers. Newer
