@@ -318,9 +318,11 @@ def main(name):
         os.chdir(ROOT)
         if name == 'setup':
             parser = argparse.ArgumentParser()
-            parser.add_argument('--doctor', action='store_true')
+            mode = parser.add_mutually_exclusive_group()
+            mode.add_argument('--doctor', action='store_true')
+            mode.add_argument('--ci', action='store_true', help='Install tools, locked dependencies and hooks without local service attachment')
             args = parser.parse_args()
-            provision(ROOT, args.doctor)
+            provision(ROOT, args.doctor, ci=args.ci)
             return 0
         if name == 'review':
             return review()

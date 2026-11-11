@@ -31,9 +31,16 @@ files are preserved; `development.tools` is an initial rendering input, not a
 second source of pins. Even no-dependencies mode requires `mise.toml` (an empty
 `[tools]` table is valid). The exact mise pin is the source of truth, not a floating
 CI version such as `node-version: "24"`. Canonical CI installs mise and calls
-setup, which reads those pins and installs hooks before running check.
+`./scripts/setup --ci`, which installs the pinned tools, locked dependencies and
+hooks before `./scripts/check`. This explicit bootstrap mode skips local service
+attachment, local artifact requirements, `localCommands` and host runtime setup.
+It needs no Vercel or Convex login or project link. It does not create `.env.local`.
+CI still runs the full check without arguments and supplies any build or test
+inputs through its own configuration. Use `--ci` in preserved CI workflows too.
+Normal setup never infers this mode from the `CI` environment variable; it retains
+the required service attachment. `--ci` and `--doctor` are mutually exclusive.
 Review those stack-specific commands before use. `development.requiredFiles`
-lists ignored files pulled from the service's authoritative store. Setup refuses
+lists ignored files pulled from the service's authoritative store. Local setup refuses
 missing artifacts before dependent commands. Reviewed, finite `localCommands`
 may generate local outputs; they must not deploy as a setup side effect.
 Production is not a separate setup approval gate: finite pulls and local
@@ -43,6 +50,82 @@ filter catches obvious deployments; it cannot prove arbitrary scripts safe.
 Review each adapter and validate its actual destination before executing it.
 Document actual service/environment mappings in repository instructions. An
 environment label alone does not verify a cloud destination.
+
+## Shared Convex and Vercel setup
+
+Every checkout with `convex/` must declare a shared cloud development deployment.
+Missing `development.convex` is configuration drift in both audit and validation.
+Use the same template adapter in every repository, removing redundant service
+scripts from `localCommands` and owned doctor hooks during rollout:
+
+```json
+{
+  "development": {
+    "environment": "development",
+    "requiredFiles": [".env.local"],
+    "localCommands": [],
+    "vercel": {"environment": "development"},
+    "convex": {
+      "deployment": "dev:benevolent-dolphin-855",
+      "urlVariable": "NEXT_PUBLIC_CONVEX_URL"
+    }
+  }
+}
+```
+
+Keep the required affected-test mapping and other development fields alongside
+these fields. `vercel` accepts exactly `environment: development`. `convex`
+requires an explicit `dev:<name>` selector, never `prod`, `local` or a personal
+project selector. It also accepts optional `url` and `urlVariable` fields.
+When present, `urlVariable` names the frontend's
+Convex URL variable, such as `NEXT_PUBLIC_CONVEX_URL`, `VITE_CONVEX_URL` or
+`CONVEX_URL`. Its value defaults to `https://<name>.convex.cloud`. For a regional deployment,
+set optional `convex.url`, for example
+`"https://shared-fixture-123.eu-west-1.convex.cloud"`. The HTTPS cloud hostname
+must start with the configured deployment name; verification compares the full
+URL. [Convex documents regional deployment URLs](https://docs.convex.dev/management-api/list-deployments).
+
+Setup requires an existing Vercel login and `.vercel/project.json` link with
+project and organization IDs. It runs `vercel whoami` before pulling. If login
+or link is missing, it fails with an instruction to complete that step separately.
+It never logs in, links, creates a project or prompts. Pin Vercel in `mise.toml`
+and keep Convex in the locked dependencies. The adapter uses the installed
+`node_modules/.bin/convex`, never a downloader that might fetch a different CLI.
+
+After locked dependency installation, setup runs the linked project's
+`vercel env pull <temporary-file> --environment development --yes`. It captures
+all output, rejects sensitive placeholders, and merges the pulled assignments
+into `.env.local`, preserving local-only keys and unrelated text. It overrides
+only `CONVEX_DEPLOYMENT` and the configured URL variable with the explicit shared
+attachment. Vercel remains the source for the other pulled values; backend
+secrets remain in Convex. The generated artifact is never hand-maintained.
+
+The write is atomic with mode 0600. Symlinked `.env.local` files are rejected.
+Duplicate managed assignments are removed. Identical reruns do not rewrite the
+file. Temporary files are removed on success or failure. Before pulling, setup
+rejects tracked `.env.local` files and installs uniform local Git excludes for
+`/.env.local` and `/.repo-standard-env-*/`. It verifies that both the final artifact
+and staging are ignored, including when the repository has no env ignore rules.
+Doctor verifies protection without modifying it. The final artifact and interrupted
+staging stay out of commits and review input. Staging stays on the checkout
+filesystem so replacement is atomic across worktree layouts. An empty Vercel-only
+pull still creates an empty, ignored `.env.local` file. Setup rejects conflicting
+inherited selectors, deploy keys, deployment tokens and self-hosted credentials;
+it does not print or delete them. Correct their authoritative store or shell.
+
+After writing, the installed CLI runs only
+`convex function-spec --env-file .env.local`. This read-only query reports its
+actual deployment URL; setup compares it with the configured shared deployment
+and fails on mismatch or inaccessible login. It never runs `convex dev`,
+`convex deploy`, `convex dev --configure`, codegen, function pushes or deployment
+creation. `./scripts/setup --doctor` checks the existing attachment and queries
+its identity without pulling or writing files. Tests stub both service CLIs and
+never contact real deployments. See [Vercel env](https://vercel.com/docs/cli/env)
+and [Convex function-spec](https://docs.convex.dev/cli/reference/function-spec).
+
+The adapter selects the primary `convex/` backend. Additional backend selectors
+pulled from Vercel are preserved. Audit each additional backend during rollout;
+do not replace its selector with the primary backend's deployment.
 
 ## Migrate older configuration
 
@@ -165,7 +248,7 @@ checks in `validation`. A command identical to `testCommand` is omitted only in
 hook mode to avoid running the suite twice. Split combined wrappers such as
 `lint && test` into separate commands when adopting affected tests.
 
-Set the optional `development.changedTestCommand` object in `.repo-standard.json`:
+Every repository must set the `development.changedTestCommand` object in `.repo-standard.json`:
 
 ```json
 {
@@ -174,8 +257,29 @@ Set the optional `development.changedTestCommand` object in `.repo-standard.json
 }
 ```
 
-For Vitest, `command` is a direct runner ending in `vitest`. `testCommand` must
-start with that runner plus `run`, for example `["pnpm", "exec", "vitest", "run"]`.
+All kinds accept an optional `preflight` argv list. Hook mode runs it once,
+before selection, on mapped, skipped and full fallback paths. A nonzero exit
+fails the push without running tests. It runs through mise from the checkout
+root, just like the test command. Full checks and CI retain `testCommand` and
+`validation`; keep any checks they need there too. For a test wrapper that checks
+tool versions before running Vitest, keep that wrapper as `testCommand` and
+expose its version-only check as preflight:
+
+```json
+{
+  "kind": "vitest",
+  "command": ["pnpm", "exec", "vitest"],
+  "preflight": ["python3", "scripts/check-tool-versions.py"]
+}
+```
+
+The version-check script is repository-owned, not supplied by the template.
+For Vitest, `command` is a direct runner ending in `vitest`. Normally `testCommand`
+starts with that runner plus `run`, for example `["pnpm", "exec", "vitest", "run"]`.
+A wrapper `testCommand`, such as `["pnpm", "test"]`, requires preflight so its
+prerequisite checks also run before related selection. Its fallback command is
+preserved verbatim; related runs use the mapping's direct runner with no wrapper
+options. Ensure the direct runner covers the same suite and configuration.
 Selection invokes `vitest related <files> --run --passWithNoTests`.
 Positional suite filters such as `tests/unit` retain the full command. Options
 with separate values also fall back because their values cannot safely be
@@ -186,7 +290,7 @@ disable coverage collection so global coverage thresholds cannot reject a partia
 suite. Full checks and full-suite fallbacks keep coverage enforcement. No relevant
 files means no tests when the changes contain only conventional documentation.
 Unknown inputs such as JSON fixtures, runtime assets and templates trigger the
-full suite in all mappings. Documentation-only paths are root `README*`,
+full suite in unit-test mappings. Documentation-only paths are root `README*`,
 `CHANGELOG*`, `LICENSE*`, `COPYING*`, `AUTHORS*`, `CONTRIBUTING*`, and `docs/**`.
 Add any documentation consumed at runtime to `sharedInfrastructureGlobs`, which
 takes precedence over this skip list. Deleted source or test files trigger the full suite.
@@ -225,8 +329,68 @@ References to a changed test module's name in other tracked Python files trigger
 the full suite. Declare dynamically shared test modules in infrastructure globs
 when their names are assembled at runtime. Changes to Python modules
 or helpers fall back to `testCommand`: a matching test filename cannot establish
-coverage of the module's callers. Missing mappings and other runners
-also use `testCommand`. The default mapping is absent, preserving custom suites.
+coverage of the module's callers.
+
+For Node's built-in test runner or tsx, use a `node-test` mapping:
+
+```json
+{
+  "kind": "node-test",
+  "command": ["pnpm", "exec", "tsx", "--test"]
+}
+```
+
+`command` must end in `--test` and prefix `testCommand`, for example
+`["pnpm", "exec", "tsx", "--test", "tests/*.test.ts"]`. Explicit test files or globs
+allow selection. A bare runner or directory targets retain the full command
+because their default discovery patterns cannot be inferred safely. Glob `*`
+matches one path segment; `**` matches across directory levels. Put runner options before
+`--test`; only test paths or globs may follow it in `testCommand`. A direct Node
+runner uses `["node", "--test"]`. Existing changed JavaScript or TypeScript files matching those targets run
+directly, including test files without `.test` or `.spec` suffixes. Sources map to tests with the
+same relative stem, ignoring `src`, `lib`, `test`, `tests` and `__tests__` directory
+segments. For example, `src/format.ts` maps to `tests/format.test.ts` and
+`src/format.spec.ts`. All matching tests within the full command's path/glob scope
+are selected. The inventory expands configured filesystem targets, including
+ignored generated tests. Unsupported glob syntax or a target with no matching
+files retains the full command. These conventions do not infer a dependency graph; declare shared
+helpers and dynamically loaded inputs in `sharedInfrastructureGlobs`. Deleted
+files, unmatched sources, unknown inputs or unavailable test inventory run the
+full command. With explicit file or glob targets, documentation-only changes skip tests.
+
+For a per-file check without a unit suite, use `files`:
+
+```json
+{
+  "kind": "files",
+  "command": ["bash", "-n"],
+  "include": ["*.sh"]
+}
+```
+
+`include` is a nonempty list of checkout-relative globs. Matching is case-sensitive;
+`*` spans directories, so `*.sh` also matches nested shell scripts. The hook runs
+`command` once per matching existing changed file, appending its `./`-prefixed path
+as one argument. It stops on the first failure. This handles commands such as
+`bash -n` that accept only one file. Nonmatching changes skip this check. Deleting
+a matching file or changing shared infrastructure runs `testCommand` instead.
+Keep whole-repository lint or validation as `testCommand` for that fallback.
+
+For validate, typecheck, build or asset checks that cannot be narrowed, use `full`:
+
+```json
+{
+  "kind": "full",
+  "reason": "Asset validation requires the complete repository."
+}
+```
+
+`reason` must be a nonempty short explanation; there is no `command` field.
+This kind always runs `testCommand`, including documentation-only or empty diffs.
+It is the explicit affected check for repositories without a meaningful per-file
+check, not an exception. It accepts the same optional preflight as all other kinds.
+Unknown kinds or fields and missing or null mappings fail configuration validation.
+Both `repository.py audit` and `validate` exit nonzero for a missing mapping.
 
 The base is the merge-base of the pushed commit with `origin/<default branch>`.
 The branch comes from `git.baseBranch`, with origin's remote HEAD as fallback.
@@ -247,20 +411,23 @@ Only hook-mode Vitest receives `--maxWorkers` and `--testTimeout`. Workers defau
 to the process's available CPUs minus the one-minute load average, rounded down
 with a floor of one. `VITEST_MAX_WORKERS` overrides that count. The timeout defaults
 to 15000 milliseconds. `REPO_STANDARD_TEST_TIMEOUT` overrides it. Both overrides
-must be positive integers. Full-suite fallbacks preserve `testCommand` arguments
+must be positive integers. Direct-runner full-suite fallbacks preserve `testCommand` arguments
 and receive the same hook limits, replacing existing worker and timeout CLI flags
 to avoid duplicate options. An existing minimum-worker CLI flag is set to one so
 it cannot exceed the hook's maximum. Hook invocations also set the legacy Vitest 3
 thread and fork environment bounds to a minimum of one and the selected maximum.
 This keeps pool-specific configuration from overriding the cap. Newer Vitest
 versions use the CLI bound. No destination Vitest configuration is edited.
-Full checks and CI receive neither flag from this feature.
+Wrapper fallbacks receive the pool environment bounds but keep their own CLI
+options and timeout. Full checks and CI receive neither flag from this feature.
 
 The current canonical `scripts/repository.py update` installs the managed helper,
-check runner, hook and documentation. Existing version 2 configuration needs no
-manual migration: absent options use the defaults above. Selection remains full
-until the destination explicitly declares a mapping. Repository-owned custom test
-commands and infrastructure globs survive updates.
+check runner, hook and documentation. Each of the 21 repositories must explicitly
+declare a mapping before validation or audit can pass. For an older version 2
+configuration, choose the appropriate kind, commit that configuration change,
+then run the template update. Do not silently insert `full` or keep local script
+exceptions. Repository-owned test commands and infrastructure globs survive updates.
+This contract was approved by Steve on 2026-11-11.
 
 ### Repository service diagnosis
 

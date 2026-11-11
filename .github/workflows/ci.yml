@@ -23,5 +23,5 @@ jobs:
           install: false
           env: false
           export_path: false
-      - run: ./scripts/setup
+      - run: ./scripts/setup --ci
       - run: ./scripts/check

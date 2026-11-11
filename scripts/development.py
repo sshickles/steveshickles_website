@@ -47,6 +47,25 @@ def read_config(path):
     dev = config["development"]
     if dev.get("environment") not in ("none", "development", "preview", "production"):
         raise ValueError("development.environment must name a documented service environment")
+    if "vercel" in dev and dev["vercel"] != {"environment": "development"}:
+        raise ValueError("development.vercel must be an object with environment: development")
+    if 'vercel' in dev and dev['environment'] != 'development':
+        raise ValueError('development.vercel requires development.environment: development')
+    if "convex" in dev:
+        convex = dev["convex"]
+        if (not isinstance(convex, dict) or not {"deployment"} <= set(convex)
+                or set(convex) - {"deployment", "urlVariable", "url"}
+                or not isinstance(convex["deployment"], str)
+                or not re.fullmatch(r"dev:[a-z0-9]+(?:-[a-z0-9]+)+", convex["deployment"])):
+            raise ValueError("development.convex requires an explicit dev deployment and optional urlVariable")
+        if "urlVariable" in convex and (not isinstance(convex["urlVariable"], str)
+                or not re.fullmatch(r"[A-Z_][A-Z0-9_]*CONVEX_URL|CONVEX_URL", convex["urlVariable"])):
+            raise ValueError("development.convex.urlVariable must name a Convex URL variable")
+        if 'url' in convex and (not isinstance(convex['url'], str) or not re.fullmatch(
+                'https://' + re.escape(convex['deployment'][4:]) + r'(?:\.[a-z0-9-]+)?\.convex\.cloud', convex['url'])):
+            raise ValueError('development.convex.url must be the configured deployment cloud URL')
+        if "vercel" not in dev or dev["environment"] != "development":
+            raise ValueError("Convex setup requires development.environment: development and development.vercel")
     for key in ("requiredFiles", "localCommands"):
         if not isinstance(dev.get(key), list):
             raise ValueError(f"development.{key} must be an explicit list")
@@ -58,19 +77,42 @@ def read_config(path):
     if dev["localCommands"] and dev["environment"] == "none":
         raise ValueError("Select an environment before enabling localCommands")
     mapping = dev.get("changedTestCommand")
-    if mapping is not None:
-        if (not isinstance(mapping, dict) or set(mapping) != {"kind", "command"}
-                or mapping["kind"] not in ("vitest", "pytest", "unittest")):
-            raise ValueError("development.changedTestCommand requires kind (vitest, pytest or unittest) and command")
-    if mapping is not None and mapping["kind"] == "vitest":
+    fields = {"vitest": {"command"}, "pytest": {"command"}, "unittest": {"command"},
+              "node-test": {"command"}, "files": {"command", "include"}, "full": {"reason"}}
+    if (not isinstance(mapping, dict) or not isinstance(mapping.get("kind"), str)
+            or mapping["kind"] not in fields):
+        raise ValueError("development.changedTestCommand is required with kind: " + ", ".join(fields))
+    required = {"kind", *fields[mapping["kind"]]}
+    if not required <= set(mapping) or set(mapping) - required - {"preflight"}:
+        raise ValueError("Invalid development.changedTestCommand fields for " + mapping["kind"])
+    suite = config['testCommand']
+    if not isinstance(suite, list) or not suite or not all(isinstance(arg, str) and arg for arg in suite):
+        raise ValueError('testCommand must be a nonempty argv list, with no secrets')
+    if mapping["kind"] == "full" and (not isinstance(mapping["reason"], str) or not mapping["reason"].strip()):
+        raise ValueError("Full mapping requires a nonempty reason")
+    if mapping["kind"] == "files":
+        include = mapping["include"]
+        if (not isinstance(include, list) or not include or any(
+                not isinstance(g, str) or not g or not g.removeprefix("./")
+                or Path(g).is_absolute() or ".." in Path(g).parts for g in include)):
+            raise ValueError("Files mapping include requires nonempty checkout-relative globs")
+        mapping["include"] = [g.removeprefix("./") for g in include]
+    if mapping["kind"] == "vitest":
         runner = mapping["command"]
         if (not isinstance(runner, list) or not runner or runner[-1] != "vitest"
-                or config["testCommand"][:len(runner) + 1] != [*runner, "run"]):
-            raise ValueError("Vitest mapping command must end in vitest and testCommand must start with that command plus run")
-    if (mapping is not None and mapping["kind"] == "pytest"
+                or (config["testCommand"][:len(runner) + 1] != [*runner, "run"]
+                    and "preflight" not in mapping)):
+            raise ValueError("Vitest mapping command must end in vitest; testCommand must start with that command plus run or declare preflight for a wrapper")
+    if (mapping["kind"] == "pytest"
             and mapping["command"] != config["testCommand"]):
         raise ValueError("Pytest mapping command must equal testCommand, including all suite options")
-    if mapping is not None and mapping["kind"] == "unittest":
+    if mapping["kind"] == "node-test":
+        runner = mapping["command"]
+        if (not isinstance(runner, list) or len(runner) < 2 or runner[-1] != "--test"
+                or config["testCommand"][:len(runner)] != runner
+                or any(arg.startswith('-') for arg in config["testCommand"][len(runner):])):
+            raise ValueError("Node-test mapping command must end in --test and prefix testCommand; put runner options before --test")
+    if mapping["kind"] == "unittest":
         runner = mapping["command"]
         if (not isinstance(runner, list) or len(runner) < 3 or runner[-2:] != ["-m", "unittest"]
                 or config["testCommand"][:len(runner) + 1] != [*runner, "discover"]):
@@ -84,8 +126,10 @@ def read_config(path):
     if "sharedInfrastructureGlobs" in dev:
         dev["sharedInfrastructureGlobs"] = [g.removeprefix("./") for g in globs]
     commands = config["validation"] + dev["localCommands"] + [config.get("testCommand")]
-    if mapping is not None:
+    if "command" in mapping:
         commands = commands + [mapping["command"]]
+    if "preflight" in mapping:
+        commands = commands + [mapping["preflight"]]
     if "dependencies" in dev:
         if not isinstance(dev["dependencies"], dict):
             raise ValueError("development.dependencies must be an object")
@@ -102,6 +146,14 @@ def read_config(path):
             raise ValueError("Commands must be nonempty argv lists, with no secrets")
         if any(arg in ("--prod", "--run-prod", "deploy") or arg.endswith(":deploy") for arg in command):
             raise ValueError("Setup and validation must not deploy as a side effect")
+        for index, argument in enumerate(command[:-1]):
+            if Path(argument).name.split('@', 1)[0] != 'convex':
+                continue
+            operation = command[index + 1:]
+            if (operation[0] in ('dev', 'deploy')
+                    or operation[:2] in (['deployment', 'create'], ['project', 'create'])
+                    or operation[0] == 'run' and '--push' in operation):
+                raise ValueError('Setup and validation must not provision Convex deployments or push functions')
     integrations = config["integrations"]
     if not isinstance(integrations.get("greptile"), bool) or not (
         integrations.get("deploymentCheck") is None or isinstance(integrations.get("deploymentCheck"), str)
@@ -147,6 +199,11 @@ def run(command, root=ROOT):
     if result.returncode:
         raise RuntimeError(f"{Path(command[0]).name} failed (exit {result.returncode}); inspect locally with secret-safe logging")
     return result.stdout.strip()
+
+
+def validate_services(root, config):
+    if (Path(root) / 'convex').is_dir() and 'convex' not in config['development']:
+        raise ValueError('Configuration drift: convex/ requires development.convex with a shared dev deployment')
 
 
 def toolchain(root, config=None):
@@ -210,8 +267,9 @@ def tool_version(output):
     return match.group(1)
 
 
-def provision(root, doctor=False):
+def provision(root, doctor=False, *, ci=False):
     config = read_config(root / ".repo-standard.json")
+    validate_services(root, config)
     tools, install = toolchain(root, config)
     for executable in ("git", "mise"):
         if not shutil.which(executable):
@@ -225,8 +283,9 @@ def provision(root, doctor=False):
     if not (root / ".githooks/pre-push").is_file():
         raise ValueError("Missing .githooks/pre-push; adopt the hook before setup")
     # Check selection and artifacts before any command, including dependency scripts.
-    missing = [p for p in dev["requiredFiles"] if not (root / p).is_file()]
-    if missing:
+    missing = [p for p in dev["requiredFiles"] if not (root / p).is_file()
+               and not (p == '.env.local' and 'vercel' in dev and not doctor)]
+    if missing and not ci:
         raise ValueError("Required local artifacts missing; pull the selected environment from its cloud store: " + ", ".join(missing))
     if not doctor:
         print("Installing pinned tools and locked dependencies", flush=True)
@@ -256,6 +315,14 @@ def provision(root, doctor=False):
         if install:
             run(["mise", "exec", "--", *install], root)
         run(["git", "config", "core.hooksPath", ".githooks"], root)
+
+    if ci:
+        print('CI tools, locked dependencies and hooks ready. Run ./scripts/check.')
+        return
+    if 'vercel' in dev:
+        from service_setup import prepare
+        prepare(root, dev, doctor=doctor)
+    if not doctor:
         for command in dev["localCommands"]:
             run(["mise", "exec", "--", *command], root)
 
