@@ -48,10 +48,8 @@ If you want to use steveshickles.com:
 
 ### 3. Deployment
 
-The existing `static.yml` workflow deploys on pushes to `master` or manual
-workflow dispatch. Development uses task branches and reviewed PRs targeting
-`dev`; follow [repository instructions](AGENTS.md). Production deployment and
-live hosting configuration changes require explicit owner authorization.
+The `static.yml` workflow deploys on pushes to `master` or manual workflow
+dispatch. The default branch is `dev`; merging a PR into `dev` does not deploy.
 
 ## URLs
 
@@ -76,8 +74,3 @@ Once GitHub Pages is enabled:
 - Ensure index.html is in the repository root
 - Check that the master branch is selected as source
 - Verify the workflow completed successfully
-
-## Development workflow
-
-See [repository instructions](AGENTS.md) for setup, checks, review and PRs.
-The `dev` branch is the default; the existing deployment trigger remains `master`.
