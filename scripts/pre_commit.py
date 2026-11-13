@@ -47,6 +47,9 @@ def leftover(backup):
 
 
 def main():
+    # Before anything else: an earlier version may have left its staged copy of the configuration
+    # in the working tree, and that copy need not parse.
+    leftover(backup_directory())
     dev = read_config(ROOT / '.repo-standard.json')['development']
     if not shutil.which('mise'):
         raise ValueError('mise is missing; run ./scripts/setup')
@@ -54,7 +57,6 @@ def main():
         # A staged-file tool such as lint-staged or Biome selects and restages the files itself.
         return subprocess.call(['mise', 'exec', '--', *dev['preCommit']], cwd=ROOT,
                                env={**os.environ, 'MISE_AUTO_INSTALL': '0'})
-    leftover(backup_directory())
     staged = names(git('diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'))
     checked = [name for name in staged if any(
         fnmatch.fnmatchcase(name, glob) or fnmatch.fnmatchcase(Path(name).name, glob)

@@ -152,6 +152,9 @@ def facts_section(config):
         lines.append('- Backend folders: ' + ', '.join(code(name + '/') for name in facts['backendFolders']) + '.')
     if facts['plugins']:
         lines.append('- Shipped product plugins: ' + ', '.join(code(name + '/') for name in facts['plugins']) + '.')
+    if facts.get('shippedInstructionFiles'):
+        lines.append('- Product content, not instructions for work in this repository: '
+                     + ', '.join(code(name) for name in facts['shippedInstructionFiles']) + '.')
     sections = (
         ('Commands', [f'- {code(c["command"])}: {c["purpose"]}' for c in facts['commands']]),
         ('Deployments', [f'- {d["name"]}: {d["service"]}, {d["environment"]}, {d["trigger"]}'
@@ -302,8 +305,12 @@ def unmanaged_instructions(path, config, managed):
     if 'convex' in facts:
         declared.add(facts['convex']['guidelines'])
     plugins = tuple(name + '/' for name in facts['plugins'])
+    # A file agents load by name passes only at an exact path the facts list, never through a folder.
+    shipped = set(facts.get('shippedInstructionFiles', []))
     def exempt(name):
-        return Path(name).name not in RESERVED_NAMES and (name in declared or name.startswith(plugins))
+        if Path(name).name in RESERVED_NAMES:
+            return name in shipped
+        return name in declared or name.startswith(plugins)
     return [name for name in tracked_files(path)
             if instruction_path(name) and name not in managed and not exempt(name)]
 
@@ -317,6 +324,9 @@ def validate_facts(path, config):
     for rule in facts['productRules']:
         if not (path / rule['doc']).is_file():
             raise ValueError(f'Product rule document is missing: {rule["doc"]}')
+    for name in facts.get('shippedInstructionFiles', []):
+        if not (path / name).is_file() or (path / name).is_symlink():
+            raise ValueError(f'Shipped instruction file is not a regular file in this checkout: {name}')
     if 'convex' not in facts:
         return
     guidelines = path / facts['convex']['guidelines']
