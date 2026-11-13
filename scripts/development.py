@@ -2,7 +2,7 @@
 """Checkout-local provisioning and read-only diagnosis. No remote configuration."""
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -25,6 +25,8 @@ VERSION_PROBES = {
 FACT_LISTS = ("commands", "deployments", "backendFolders", "services", "plugins", "productRules")
 # A product plugin is product code. It can never be one of the folders agents load instructions from.
 AGENT_FOLDERS = (".claude", ".codex", ".gemini", ".cursor", ".agents", ".github")
+# Agents load these by name wherever they sit. A product that ships one as content lists its exact path.
+RESERVED_NAMES = ("AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "GEMINI.md")
 CONVEX_GUIDELINES = "_generated/ai/guidelines.md"
 
 
@@ -41,7 +43,8 @@ def fact_path(value, name):
     if (not isinstance(value, str) or not value.strip("./") or Path(value).is_absolute()
             or ".." in Path(value).parts):
         raise ValueError(f"facts.{name} must contain checkout-relative paths")
-    return value.removeprefix("./").rstrip("/")
+    # One spelling per path, the one Git lists: no "./" segments, doubled or trailing slashes.
+    return PurePosixPath(value).as_posix()
 
 
 def fact_records(facts, key, required, optional=()):
@@ -58,7 +61,7 @@ def fact_records(facts, key, required, optional=()):
 def check_facts(config):
     """Facts are data rendered into AGENTS.md. They never carry workflow rules."""
     facts = config["facts"]
-    allowed = {"summary", *FACT_LISTS, "convex", "coderabbitProfile"}
+    allowed = {"summary", *FACT_LISTS, "convex", "coderabbitProfile", "shippedInstructionFiles"}
     if set(facts) - allowed:
         raise ValueError("Unknown facts: " + ", ".join(sorted(set(facts) - allowed)))
     fact_text(facts.get("summary"), "summary")
@@ -73,6 +76,17 @@ def check_facts(config):
     for name in facts["plugins"]:
         if set(Path(name).parts) & set(AGENT_FOLDERS) or Path(name).parts[:2] in (("docs", "agents"), ("docs", "adr")):
             raise ValueError("facts.plugins lists shipped product plugins, never an agent or instruction folder: " + name)
+    if "shippedInstructionFiles" in facts:
+        if not isinstance(facts["shippedInstructionFiles"], list) or not facts["shippedInstructionFiles"]:
+            raise ValueError("facts.shippedInstructionFiles must be a list of paths; omit it when there are none")
+        facts["shippedInstructionFiles"] = [fact_path(value, "shippedInstructionFiles")
+                                            for value in facts["shippedInstructionFiles"]]
+        for name in facts["shippedInstructionFiles"]:
+            # One file at a time, and only inside a folder already declared as product.
+            if Path(name).name not in RESERVED_NAMES or not any(
+                    name.startswith(plugin + "/") for plugin in facts["plugins"]):
+                raise ValueError("facts.shippedInstructionFiles lists exact paths of files named "
+                                 + ", ".join(RESERVED_NAMES) + " inside a declared plugin folder: " + name)
     for index, rule in enumerate(facts["productRules"]):
         if not isinstance(rule, dict) or set(rule) != {"doc", "check"}:
             raise ValueError(f"facts.productRules[{index}] requires doc and check")
