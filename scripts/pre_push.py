@@ -1,4 +1,4 @@
-"""Validate destination refs before running the common check command."""
+"""Reject pushes to the default branch. Checks run while working, at commit and in CI."""
 import json
 import os
 import subprocess
@@ -35,19 +35,12 @@ def default_branch(remote):
 def main():
     branch = default_branch(sys.argv[1] if len(sys.argv) > 1 else 'origin')
     refs = sys.stdin.buffer.read()
-    commits = []
     for line in refs.splitlines():
-        _, local_sha, remote_ref, _ = line.split()
-        if local_sha.strip(b'0'):
-            commits.append(local_sha.decode())
+        _, _, remote_ref, _ = line.split()
         if remote_ref == ('refs/heads/' + branch).encode():
             raise ValueError('Direct pushes to the default branch are forbidden; open a PR')
-    checks = repository_checks(ROOT)
-    # The approved contract runs checks on every push, including ref deletions.
-    result = subprocess.call([str(ROOT / 'scripts/check'), '--pre-push', *commits], cwd=ROOT, stdin=subprocess.DEVNULL)
-    if result:
-        return result
-    for check in checks:
+    # Only checks a repository owns itself run here; the shared checks moved out of the push.
+    for check in repository_checks(ROOT):
         result = subprocess.run([str(check), *sys.argv[1:]], cwd=ROOT, input=refs)
         if result.returncode:
             return result.returncode

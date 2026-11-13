@@ -1,4 +1,3 @@
-# repo-standard: canonical-agent-files
 # CodeRabbit reviews locally before PR creation. Greptile reviews on GitHub.
 # CLI reviews still use the path filters and instructions below.
 language: "en-US"
@@ -18,36 +17,30 @@ reviews:
     # repo-standard: managed-path-filters
     - "!.claude/settings.json"
     - "!.coderabbit.yaml"
+    - "!.codex/config.toml"
+    - "!.codex/rules/repo-standard.rules"
+    - "!.gemini/policies/repo-standard.toml"
+    - "!.gemini/settings.json"
+    - "!.githooks/pre-commit"
     - "!.githooks/pre-push"
     - "!.repo-standard-source.json"
     - "!AGENTS.md"
     - "!CLAUDE.md"
-    - "!apply-ruleset.sh"
-    - "!docs/agents/policy.md"
-    - "!docs/agents/review-checklist.md"
-    - "!docs/halo.md"
-    - "!docs/setup.md"
-    - "!docs/t3-compatibility.md"
     - "!greptile.json"
-    - "!ruleset.json"
     - "!scripts/changed_tests.py"
     - "!scripts/check"
     - "!scripts/commands.py"
     - "!scripts/development.py"
-    - "!scripts/halo.py"
     - "!scripts/install-hooks.mjs"
     - "!scripts/lint-shell"
-    - "!scripts/new-repo"
+    - "!scripts/pre_commit.py"
     - "!scripts/pre_push.py"
-    - "!scripts/repository.py"
     - "!scripts/review"
     - "!scripts/service_setup.py"
     - "!scripts/setup"
     - "!scripts/standard.py"
     - "!scripts/t3_actions.py"
     - "!scripts/test"
-    - "!scripts/worktree.py"
-    - "!scripts/wt.sh"
     - "!**/node_modules/**"
     - "!**/dist/**"
     - "!**/build/**"
@@ -61,7 +54,7 @@ reviews:
   path_instructions:
     - path: "**/*"
       instructions: |
-        Follow AGENTS.md and the ADRs under docs/adr where present.
+        Follow AGENTS.md.
         Report concrete production risks: correctness, auth and authorization,
         data integrity, customer-data exposure, race conditions, broken
         contracts, missing validation, missing tests for changed behaviour.

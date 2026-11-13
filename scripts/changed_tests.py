@@ -1,4 +1,4 @@
-"""Conservative affected-test selection for local pre-push checks only."""
+"""Local checks scoped to a change: per-file checks and conservative affected-test selection."""
 import fnmatch
 import math
 import os
@@ -30,8 +30,29 @@ def git(root, *args):
     return result.stdout.rstrip('\n')
 
 
-def changed_files(root, commits):
-    """Union changes from each pushed commit's merge-base, including tracked edits."""
+def file_checks(root, checks, files, *, whole=True):
+    """Run each configured check on the files it covers. whole=False skips project-wide checks."""
+    for check in checks:
+        matched = [name for name in files if any(
+            fnmatch.fnmatchcase(name, glob) or fnmatch.fnmatchcase(Path(name).name, glob)
+            for glob in check['include'])]
+        if not check.get('passFiles', True):
+            # A deleted file can break the project too, so any matching change runs a project-wide check.
+            batches = [[]] if matched and whole else []
+        else:
+            present = [name for name in matched if (Path(root) / name).is_file()]
+            size = 1 if check.get('perFile') else 200
+            batches = [present[i:i + size] for i in range(0, len(present), size)]
+        for batch in batches:
+            result = subprocess.call(['mise', 'exec', '--', *check['command'], *('./' + name for name in batch)],
+                                     cwd=root, env={**os.environ, 'MISE_AUTO_INSTALL': '0'})
+            if result:
+                return result
+    return 0
+
+
+def changed_files(root, commits, untracked=False):
+    """Union changes from each commit's merge-base, including tracked edits and, on request, new files."""
     from pre_push import default_branch
     try:
         if git(root, 'rev-parse', '--is-shallow-repository') == 'true':
@@ -51,6 +72,8 @@ def changed_files(root, commits):
             for revisions in ((base, tip), (tip,)):
                 names = git(root, 'diff', '--name-only', '-z', '--no-renames', *revisions, '--')
                 files.update(filter(None, names.split('\0')))
+        if untracked:
+            files.update(filter(None, git(root, 'ls-files', '--others', '--exclude-standard', '-z').split('\0')))
         return sorted(files), 'changes since merge-base with ' + remote
     except (ValueError, OSError):
         return None, 'base cannot be resolved'
@@ -323,17 +346,23 @@ def select_tests(root, config, files, reason):
 
 
 def run(root, config, commits):
+    """Check a change: per-file checks on what changed, then the tests related to it."""
     root = Path(root).resolve()
     mapping = config['development']['changedTestCommand']
     environment = {**os.environ, 'MISE_AUTO_INSTALL': '0'}
     if 'preflight' in mapping:
-        print('Pre-push: affected-check preflight', flush=True)
+        print('Changed: affected-check preflight', flush=True)
         result = subprocess.call(['mise', 'exec', '--', *mapping['preflight']], cwd=root, env=environment)
         if result:
             return result
-    files, reason = changed_files(root, commits)
+    files, reason = changed_files(root, commits, True)
+    # Without history there is no change to scope to, so every tracked file is checked.
+    scope = files if files is not None else [name for name in git(root, 'ls-files', '-z').split('\0') if name]
+    result = file_checks(root, config['development'].get('fileChecks', []), scope)
+    if result:
+        return result
     command, message = select_tests(root, config, files, reason)
-    print('Pre-push: ' + message, flush=True)
+    print('Changed: ' + message, flush=True)
     if not command:
         return 0
     if mapping['kind'] == 'files' and message.startswith('changed matching files:'):
@@ -350,7 +379,7 @@ def run(root, config, commits):
             _, top, _, _ = unittest_scope(root, config['testCommand'], mapping['command'])
         except (ValueError, OSError, UnicodeError):
             command = list(config['testCommand'])
-            print('Pre-push: full tests: unittest import scope became unavailable', flush=True)
+            print('Changed: full tests: unittest import scope became unavailable', flush=True)
         else:
             environment['PYTHONPATH'] = str(top) + (os.pathsep + environment['PYTHONPATH']
                                                     if environment.get('PYTHONPATH') else '')

@@ -3,6 +3,16 @@ import copy
 import difflib
 import json
 
+# Each action calls its script without arguments, so a saved host action never needs editing when a
+# script's behavior changes. ./scripts/check without arguments is the working check.
+COMMANDS = ['./scripts/setup', './scripts/check', './scripts/test', './scripts/review']
+# Commands an earlier revision shipped for the same action. A recorded lock may still carry one,
+# and an update replaces an action that still has one instead of reporting a conflict.
+SUPERSEDED = {'./scripts/check': ('./scripts/check --changed',)}
+# While the check action carried its earlier command, the command without arguments ran the full
+# suite. A repository's own action from then keeps that meaning under its current spelling.
+RESPELLED = {'./scripts/check': './scripts/check --all'}
+
 
 def definitions(files):
     """Older source locks predate canonical actions and remain valid for upgrades."""
@@ -10,8 +20,8 @@ def definitions(files):
     if raw is None:
         return []
     scripts = scripts_from(json.loads(raw))
-    commands = ['./scripts/' + name for name in ('setup', 'check', 'test', 'review')]
-    if len(scripts) != 4 or [s['command'] for s in scripts] != commands:
+    if len(scripts) != 4 or any(script['command'] not in (wanted, *SUPERSEDED.get(wanted, ()))
+                                for script, wanted in zip(scripts, COMMANDS)):
         raise ValueError('Canonical T3 definitions must contain setup, check, test, review once')
     if len({s['name'] for s in scripts}) != 4:
         raise ValueError('Duplicate canonical T3 action name')
@@ -73,12 +83,20 @@ def merge(document, canonical):
 def _merge(document, canonical):
     result = copy.deepcopy(document)
     retained = []
-    for script in scripts_from(document):
+    scripts = scripts_from(document)
+    earlier = {wanted['command'] for wanted in canonical
+               if any(s['name'] == wanted['name'] and s['command'] in SUPERSEDED.get(wanted['command'], ())
+                      for s in scripts)}
+    for script in scripts:
         found = [s for s in canonical if matches(script, s)]
+        if (script['command'] in earlier and script['command'] in RESPELLED
+                and all(script['name'] != wanted['name'] for wanted in found)):
+            script, found = dict(script, command=RESPELLED[script['command']]), []
         if found:
             if script.keys() - found[0].keys():
                 raise ValueError('Preserve extra action fields manually before replacing: ' + script['name'])
-            if any(script['command'] != wanted['command'] for wanted in found):
+            if any(script['command'] not in (wanted['command'], *SUPERSEDED.get(wanted['command'], ()))
+                   for wanted in found):
                 raise ValueError('Preserve repository action manually before replacing: ' + script['name'])
             if script.get('runOnWorktreeCreate') and script['command'] != './scripts/setup':
                 raise ValueError('Fold repository creation behavior into ./scripts/setup before updating')
@@ -126,4 +144,4 @@ def audit(path, canonical):
 
 def host_inventory():
     return [{'scope': 'host saved actions, overrides and keybindings', 'status': 'unsupported',
-             'detail': 'No supported settings-read CLI in T3 0.1.8. Use supported settings UI and project/environment read tools per host; see docs/t3-compatibility.md. Effective host state remains pending.'}]
+             'detail': 'No supported settings-read CLI in T3 0.1.8. Use supported settings UI and project/environment read tools per host; see docs/t3-compatibility.md in sshickles/repo-standard. Effective host state remains pending.'}]

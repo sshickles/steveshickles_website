@@ -1,0 +1,38 @@
+# Generated from sshickles/repo-standard. A backstop, not the enforcement: the
+# pre-push hook and the GitHub ruleset reject these operations for real.
+# Each expression is tested against one shell command at a time.
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*\s(?:--force|-[a-zA-Z]*f)'
+decision = "deny"
+priority = 900
+denyMessage = "Force pushes are not allowed. Merge the default branch into the task branch and push normally."
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*\s[\\"\x27]*\+[^\s]'
+decision = "deny"
+priority = 900
+denyMessage = "Forced refspec pushes are not allowed."
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*\s--no-verify\b'
+decision = "deny"
+priority = 900
+denyMessage = "Do not skip the pre-push hook. Fix the failing check."
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*(?:[\s:+"\x27]|[\s:+"\x27]refs/heads/)dev(?=[\s"\x27\\;&|)]|$)'
+decision = "deny"
+priority = 900
+denyMessage = "Never push to the default branch. Push the task branch and open a pull request."
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = '[^\x00]*gh\b[^\x00;&|]*\bpr\s+merge\b[^\x00;&|]*\s--admin\b'
+decision = "deny"
+priority = 900
+denyMessage = "Do not bypass branch protection. Use gh pr merge <number> --auto --squash."

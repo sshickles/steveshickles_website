@@ -22,14 +22,88 @@ VERSION_PROBES = {
 }
 
 
+FACT_LISTS = ("commands", "deployments", "backendFolders", "services", "plugins", "productRules")
+# A product plugin is product code. It can never be one of the folders agents load instructions from.
+AGENT_FOLDERS = (".claude", ".codex", ".gemini", ".cursor", ".agents", ".github")
+CONVEX_GUIDELINES = "_generated/ai/guidelines.md"
+
+
 def read_config(path):
-    config = json.loads(Path(path).read_text())
-    if not isinstance(config, dict) or config.get("version") != 2:
-        raise ValueError("Use configuration version 2; see docs/setup.md for migration")
-    for key in ("repository", "profile", "git", "validation", "integrations", "review", "development", "conventions", "ciChecks", "testCommand"):
+    return check_config(json.loads(Path(path).read_text()))
+
+
+def fact_text(value, name, limit=160):
+    if not isinstance(value, str) or not value.strip() or "\n" in value or len(value) > limit:
+        raise ValueError(f"facts.{name} must be one line of at most {limit} characters")
+
+
+def fact_path(value, name):
+    if (not isinstance(value, str) or not value.strip("./") or Path(value).is_absolute()
+            or ".." in Path(value).parts):
+        raise ValueError(f"facts.{name} must contain checkout-relative paths")
+    return value.removeprefix("./").rstrip("/")
+
+
+def fact_records(facts, key, required, optional=()):
+    for index, record in enumerate(facts[key]):
+        name = f"{key}[{index}]"
+        if (not isinstance(record, dict) or not set(required) <= set(record)
+                or set(record) - set(required) - set(optional)):
+            raise ValueError(f"facts.{name} requires {', '.join(required)}"
+                             + (f" and accepts {', '.join(optional)}" if optional else ""))
+        for field, value in record.items():
+            fact_text(value, f"{name}.{field}")
+
+
+def check_facts(config):
+    """Facts are data rendered into AGENTS.md. They never carry workflow rules."""
+    facts = config["facts"]
+    allowed = {"summary", *FACT_LISTS, "convex", "coderabbitProfile"}
+    if set(facts) - allowed:
+        raise ValueError("Unknown facts: " + ", ".join(sorted(set(facts) - allowed)))
+    fact_text(facts.get("summary"), "summary")
+    for key in FACT_LISTS:
+        if not isinstance(facts.get(key), list):
+            raise ValueError(f"facts.{key} must be an explicit list")
+    fact_records(facts, "commands", ("command", "purpose"))
+    fact_records(facts, "deployments", ("name", "service", "environment", "trigger"), ("url",))
+    fact_records(facts, "services", ("name", "purpose"))
+    for key in ("backendFolders", "plugins"):
+        facts[key] = [fact_path(value, key) for value in facts[key]]
+    for name in facts["plugins"]:
+        if set(Path(name).parts) & set(AGENT_FOLDERS) or Path(name).parts[:2] in (("docs", "agents"), ("docs", "adr")):
+            raise ValueError("facts.plugins lists shipped product plugins, never an agent or instruction folder: " + name)
+    for index, rule in enumerate(facts["productRules"]):
+        if not isinstance(rule, dict) or set(rule) != {"doc", "check"}:
+            raise ValueError(f"facts.productRules[{index}] requires doc and check")
+        rule["doc"] = fact_path(rule["doc"], "productRules")
+        if rule["check"] not in config["validation"]:
+            raise ValueError("facts.productRules check must be one of the validation commands, "
+                             "so ./scripts/check and CI enforce it: " + rule["doc"])
+    if ("convex" in facts) != ("convex" in config["development"]):
+        raise ValueError("facts.convex and development.convex must be declared together")
+    if "convex" in facts:
+        convex = facts["convex"]
+        if not isinstance(convex, dict) or set(convex) != {"guidelines"}:
+            raise ValueError("facts.convex requires the guidelines file path")
+        convex["guidelines"] = fact_path(convex["guidelines"], "convex.guidelines")
+        if not convex["guidelines"].endswith("/" + CONVEX_GUIDELINES):
+            raise ValueError("facts.convex.guidelines must be the Convex-maintained <functions>/" + CONVEX_GUIDELINES)
+    profile = facts.get("coderabbitProfile")
+    if config["review"].get("coderabbit") or profile is not None:
+        if not isinstance(profile, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", profile):
+            raise ValueError("facts.coderabbitProfile must name the CodeRabbit profile for this repository")
+
+
+def check_config(config):
+    if not isinstance(config, dict) or config.get("version") != 3:
+        raise ValueError("Use configuration version 3; see docs/setup.md in sshickles/repo-standard for migration")
+    if "conventions" in config:
+        raise ValueError("Remove conventions; work arrives as T3 prompts and branch names are free")
+    for key in ("repository", "profile", "git", "validation", "integrations", "review", "development", "facts", "ciChecks", "testCommand"):
         if key not in config:
             raise ValueError(f"Missing required configuration: {key}")
-    for key in ("git", "integrations", "review", "development", "conventions"):
+    for key in ("git", "integrations", "review", "development", "facts"):
         if not isinstance(config[key], dict):
             raise ValueError(f"{key} must be an object")
     if not isinstance(config["repository"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9_.-]*", config["repository"]):
@@ -143,6 +217,21 @@ def read_config(path):
         if (not isinstance(runner, list) or len(runner) < 3 or runner[-2:] != ["-m", "unittest"]
                 or config["testCommand"][:len(runner) + 1] != [*runner, "discover"]):
             raise ValueError("Unittest mapping must end in -m unittest and testCommand must start with that command plus discover")
+    file_checks = dev.get("fileChecks")
+    if not isinstance(file_checks, list):
+        raise ValueError("development.fileChecks must be an explicit list of per-file checks; use [] for none")
+    for check in file_checks:
+        include = check.get("include") if isinstance(check, dict) else None
+        if (not isinstance(check, dict) or set(check) - {"command", "include", "passFiles", "perFile"}
+                or not isinstance(check.get("perFile", False), bool)
+                or check.get("perFile") and not check.get("passFiles", True)
+                or not isinstance(include, list) or not include
+                or any(not isinstance(g, str) or not g or Path(g).is_absolute() or ".." in Path(g).parts for g in include)
+                or not isinstance(check.get("passFiles", True), bool)):
+            raise ValueError("Each development.fileChecks entry requires command and include globs, with optional passFiles or perFile")
+    runner = config.get("ciRunner", "ubuntu-latest")
+    if not isinstance(runner, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", runner):
+        raise ValueError("ciRunner must be one GitHub Actions runner label")
     globs = dev.get("sharedInfrastructureGlobs", [])
     if not isinstance(globs, list) or any(
         not isinstance(g, str) or not g or Path(g).is_absolute() or ".." in Path(g).parts
@@ -152,6 +241,9 @@ def read_config(path):
     if "sharedInfrastructureGlobs" in dev:
         dev["sharedInfrastructureGlobs"] = [g.removeprefix("./") for g in globs]
     commands = config["validation"] + dev["localCommands"] + [config.get("testCommand")]
+    commands = commands + [check["command"] for check in file_checks]
+    if "preCommit" in dev:
+        commands = commands + [dev["preCommit"]]
     if "command" in mapping:
         commands = commands + [mapping["command"]]
     if "preflight" in mapping:
@@ -210,11 +302,7 @@ def read_config(path):
                 or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", ci["job"])
                 or ci["context"] not in [c["context"] for c in checks]):
             raise ValueError("existingCI requires workflow, job and a context listed in ciChecks")
-    conventions = config["conventions"]
-    for key in ("branchPattern", "issueReadiness", "claiming"):
-        if not isinstance(conventions.get(key), str) or not conventions[key].strip():
-            raise ValueError(f"conventions.{key} is required")
-    re.compile(conventions["branchPattern"])
+    check_facts(config)
     return config
 
 
@@ -306,8 +394,9 @@ def provision(root, doctor=False, *, ci=False):
     hooks = subprocess.run(["git", "config", "--get", "core.hooksPath"], cwd=root, capture_output=True, text=True)
     if hooks.stdout.strip() not in ("", ".githooks"):
         raise ValueError("Existing core.hooksPath differs; integrate hooks manually before setup")
-    if not (root / ".githooks/pre-push").is_file():
-        raise ValueError("Missing .githooks/pre-push; adopt the hook before setup")
+    for hook in ("pre-commit", "pre-push"):
+        if not (root / ".githooks" / hook).is_file():
+            raise ValueError(f"Missing .githooks/{hook}; adopt the hooks before setup")
     # Check selection and artifacts before any command, including dependency scripts.
     missing = [p for p in dev["requiredFiles"] if not (root / p).is_file()
                and not (p == '.env.local' and 'vercel' in dev and not doctor)]
@@ -356,10 +445,8 @@ def provision(root, doctor=False, *, ci=False):
         from pre_push import repository_checks
         for check in repository_checks(root, '.githooks/doctor.d'):
             run([str(check)], root)
-    import halo
-    halo.prepare(root, doctor)
     if doctor:
         print("Local configuration, tools, dependency presence and hooks verified; no provisioning performed.")
         print("Cloud credentials and dependency freshness are not certified by doctor.")
     else:
-        print("Checkout ready. Start development separately; see docs/agents/repository.md.")
+        print("Checkout ready. Start development separately; AGENTS.md lists the commands.")

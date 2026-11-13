@@ -8,15 +8,47 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  checks:
-    name: ${{ (github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch) && 'checks' || 'Skip non-default push' }}
+  plan:
     if: github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    outputs:
+      steps: ${{ steps.list.outputs.steps }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - id: list
+        run: echo "steps=$(python3 -B scripts/check --list)" >> "$GITHUB_OUTPUT"
+  run:
+    name: ${{ matrix.step.name }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        step: ${{ fromJSON(needs.plan.outputs.steps) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Cache tools and package stores
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/share/mise
+            ~/.local/share/pnpm/store
+            ~/.npm
+            ~/.cache/uv
+          key: deps-${{ runner.os }}-${{ hashFiles('mise.toml', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'uv.lock') }}
+          restore-keys: deps-${{ runner.os }}-
+      - name: Cache this step's own build output
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: build-${{ runner.os }}-${{ matrix.step.id }}-${{ github.sha }}
+          restore-keys: build-${{ runner.os }}-${{ matrix.step.id }}-
       - uses: jdx/mise-action@v4
         with:
           version: 2026.8.5
@@ -24,4 +56,20 @@ jobs:
           env: false
           export_path: false
       - run: ./scripts/setup --ci
-      - run: ./scripts/check
+      - run: ./scripts/check --only "$STEP"
+        env:
+          STEP: ${{ matrix.step.id }}
+  checks:
+    name: ${{ (github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch) && 'checks' || 'Skip non-default push' }}
+    needs: [plan, run]
+    if: always() && (github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every parallel step of the full check
+        run: |
+          test "$PLAN" = success
+          test "$RUN" = success
+        env:
+          PLAN: ${{ needs.plan.result }}
+          RUN: ${{ needs.run.result }}
