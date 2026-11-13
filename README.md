@@ -31,14 +31,16 @@ This website is hosted on GitHub Pages with:
     └── static.yml
 ```
 
-## Development Workflow
+## Setup and commands
 
-Use a task branch and pull request targeting `dev`. Run `./scripts/setup`,
-`./scripts/check`, `./scripts/test` and `./scripts/review` before pushing.
-See [repository instructions](AGENTS.md) for the shared workflow.
+- `./scripts/setup` installs the pinned tools and the Git hooks.
+- `./scripts/check` checks the files you changed; `./scripts/check --all` runs everything CI runs.
+- `./scripts/test` runs the full test command.
 
-The existing Pages workflow deploys from `master`. Production deployment is a
-separate owner-authorized operation; merging a PR into `dev` does not deploy.
+There is no build step. Open `index.html` in a browser to view the site.
+
+`dev` is the default branch. The Pages workflow publishes on pushes to
+`master`, so merging a PR into `dev` does not deploy.
 
 ## Custom Domain Setup
 
@@ -67,4 +69,4 @@ For detailed instructions, see [GITHUB_PAGES_SETUP.md](GITHUB_PAGES_SETUP.md).
 
 ## Making Updates
 
-To update content, edit `index.html` and follow the development workflow above. Changes pushed to master will automatically deploy within a few minutes.
+To update content, edit `index.html`. Changes pushed to master deploy automatically within a few minutes.

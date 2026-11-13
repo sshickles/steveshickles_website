@@ -1,0 +1,12 @@
+# Generated from sshickles/repo-standard. Codex loads this file once the
+# project is trusted. Instructions come from AGENTS.md.
+
+[features]
+memories = false
+
+[memories]
+use_memories = false
+generate_memories = false
+
+[shell_environment_policy]
+set = { REPO_STANDARD_IMPLEMENTER = "codex" }

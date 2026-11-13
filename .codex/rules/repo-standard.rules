@@ -1,0 +1,93 @@
+# Generated from sshickles/repo-standard. A backstop, not the enforcement: the
+# pre-push hook and the GitHub ruleset reject these operations for real.
+# Codex matches exact argv tokens from the start of a command. A nested list
+# means any one of those tokens at that position. A flag later in the command
+# cannot be matched.
+
+_FORCE = ["--force", "-f", "--force-with-lease", "--force-if-includes"]
+_SKIP = ["--no-verify"]
+_REMOTES = ["origin", "upstream"]
+_UPSTREAM = ["-u", "--set-upstream"]
+_DEFAULT_BRANCH = [
+    "dev",
+    "HEAD:dev",
+    "+dev",
+    "+HEAD:dev",
+    "dev:dev",
+    ":dev",
+    "refs/heads/dev",
+    "HEAD:refs/heads/dev",
+]
+_NO_FORCE = "Force pushes are not allowed. Merge the default branch into the task branch and push normally."
+_NO_SKIP = "Do not skip the pre-push hook. Fix the failing check."
+_NO_DEFAULT = "Never push to the default branch. Push the task branch and open a pull request."
+
+prefix_rule(
+    pattern = ["git", "push", _FORCE],
+    decision = "forbidden",
+    justification = _NO_FORCE,
+    match = ["git push --force", "git push -f origin task", "git push --force-with-lease origin task"],
+    not_match = ["git push origin task", "git push -u origin task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _REMOTES, _FORCE],
+    decision = "forbidden",
+    justification = _NO_FORCE,
+    match = ["git push origin --force", "git push origin -f task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _UPSTREAM, _FORCE],
+    decision = "forbidden",
+    justification = _NO_FORCE,
+    match = ["git push -u --force origin task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _UPSTREAM, _REMOTES, _FORCE],
+    decision = "forbidden",
+    justification = _NO_FORCE,
+    match = ["git push -u origin --force task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _SKIP],
+    decision = "forbidden",
+    justification = _NO_SKIP,
+    match = ["git push --no-verify", "git push --no-verify origin task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _REMOTES, _SKIP],
+    decision = "forbidden",
+    justification = _NO_SKIP,
+    match = ["git push origin --no-verify task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _UPSTREAM, _SKIP],
+    decision = "forbidden",
+    justification = _NO_SKIP,
+    match = ["git push -u --no-verify origin task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _UPSTREAM, _REMOTES, _SKIP],
+    decision = "forbidden",
+    justification = _NO_SKIP,
+    match = ["git push -u origin --no-verify task"],
+)
+prefix_rule(
+    pattern = ["git", "push", _REMOTES, _DEFAULT_BRANCH],
+    decision = "forbidden",
+    justification = _NO_DEFAULT,
+    match = ["git push origin dev", "git push origin HEAD:dev", "git push upstream HEAD:refs/heads/dev"],
+    not_match = ["git push origin task", "git push origin dev-nav"],
+)
+prefix_rule(
+    pattern = ["git", "push", _UPSTREAM, _REMOTES, _DEFAULT_BRANCH],
+    decision = "forbidden",
+    justification = _NO_DEFAULT,
+    match = ["git push -u origin dev", "git push --set-upstream origin dev"],
+)
+prefix_rule(
+    pattern = ["gh", "pr", "merge", "--admin"],
+    decision = "forbidden",
+    justification = "Do not bypass branch protection. Use gh pr merge <number> --auto --squash.",
+    match = ["gh pr merge --admin", "gh pr merge --admin 12 --squash"],
+    not_match = ["gh pr merge 12 --auto --squash", "gh pr merge 12 --disable-auto"],
+)

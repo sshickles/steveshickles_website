@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "repository": "sshickles/steveshickles_website",
   "profile": "custom",
   "git": {
@@ -38,13 +38,85 @@
     },
     "changedTestCommand": {
       "kind": "full",
-      "reason": "Repository policy validation requires the complete checkout; there is no application test suite."
-    }
+      "reason": "Instruction validation needs the complete checkout; there is no application test suite."
+    },
+    "fileChecks": [
+      {
+        "command": [
+          "actionlint"
+        ],
+        "include": [
+          ".github/workflows/*.yml",
+          ".github/workflows/*.yaml"
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "-B",
+          "-c",
+          "import ast, sys; [ast.parse(open(name).read(), name) for name in sys.argv[1:]]"
+        ],
+        "include": [
+          "*.py"
+        ]
+      },
+      {
+        "command": [
+          "python3",
+          "-B",
+          "-c",
+          "import json, sys; [json.load(open(name)) for name in sys.argv[1:]]"
+        ],
+        "include": [
+          "*.json"
+        ]
+      },
+      {
+        "command": [
+          "bash",
+          "-n"
+        ],
+        "include": [
+          "*.sh",
+          ".githooks/pre-commit",
+          ".githooks/pre-push",
+          "scripts/lint-shell"
+        ],
+        "perFile": true
+      }
+    ]
   },
-  "conventions": {
-    "branchPattern": "^(feat|fix|docs|chore|ci|refactor|prototype|research)/[a-z0-9]+(-[a-z0-9]+)*$",
-    "issueReadiness": "No readiness label is required. See docs/agents/repository.md.",
-    "claiming": "Check for an assignee or existing PR before starting; follow the destination issue policy."
+  "facts": {
+    "summary": "Steve Shickles's static personal website: index.html, error.html and a CNAME for steveshickles.com. No build, backend or packages.",
+    "commands": [],
+    "deployments": [
+      {
+        "name": "Website",
+        "service": "GitHub Pages",
+        "environment": "production",
+        "trigger": "push to master or manual run of static.yml, which uploads the whole repository root; a merge to dev does not publish",
+        "url": "https://steveshickles.com"
+      }
+    ],
+    "backendFolders": [],
+    "services": [
+      {
+        "name": "GitHub Pages",
+        "purpose": "Hosts the site published from master; CNAME sets the custom domain steveshickles.com."
+      },
+      {
+        "name": "GitHub Actions",
+        "purpose": "Runs the required checks job on PRs and the static.yml Pages workflow on master."
+      },
+      {
+        "name": "Greptile",
+        "purpose": "Reviews every PR; its approval is a required check."
+      }
+    ],
+    "plugins": [],
+    "productRules": [],
+    "coderabbitProfile": "ss"
   },
   "ciChecks": [
     {
@@ -54,7 +126,7 @@
   ],
   "testCommand": [
     "python3",
-    "scripts/repository.py",
+    "scripts/standard.py",
     "validate",
     "."
   ]

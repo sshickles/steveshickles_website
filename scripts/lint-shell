@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-for script in scripts/wt.sh scripts/new-repo .githooks/pre-push apply-ruleset.sh scripts/lint-shell; do
+# Syntax-check the shell entry points present in this checkout.
+for script in .githooks/pre-push scripts/lint-shell scripts/new-repo apply-ruleset.sh; do
+  [ -e "$script" ] || continue
   bash -n "$script"
 done

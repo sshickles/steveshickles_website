@@ -1,0 +1,14 @@
+{
+  "context": {
+    "fileName": [
+      "AGENTS.md"
+    ]
+  },
+  "experimental": {
+    "autoMemory": false
+  },
+  "policyPaths": [
+    ".gemini/policies",
+    "~/.gemini/policies"
+  ]
+}
