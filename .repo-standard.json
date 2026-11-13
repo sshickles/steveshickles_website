@@ -75,14 +75,15 @@
       {
         "command": [
           "bash",
-          "scripts/lint-shell"
+          "-n"
         ],
         "include": [
           "*.sh",
-          ".githooks/*",
+          ".githooks/pre-commit",
+          ".githooks/pre-push",
           "scripts/lint-shell"
         ],
-        "passFiles": false
+        "perFile": true
       }
     ]
   },
