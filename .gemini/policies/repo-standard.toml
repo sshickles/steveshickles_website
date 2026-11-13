@@ -1,38 +1,44 @@
 # Generated from sshickles/repo-standard. A backstop, not the enforcement: the
 # pre-push hook and the GitHub ruleset reject these operations for real.
-# Each expression is tested against one shell command at a time.
+# Each expression is tested against one shell command at a time, as it appears
+# in the JSON arguments: a double quote is written \" there. A rule applies only
+# where git or gh starts a command and push or pr merge is its subcommand. A
+# command starts at the beginning or after ; & | ( outside quotes, so a command
+# that merely mentions a push, such as a history search or a commit message, is
+# not denied. A backslash and the character it escapes are read as one unit, so
+# an escaped quote neither opens nor closes a quoted argument.
 
 [[rule]]
 toolName = "run_shell_command"
-commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*\s(?:--force|-[a-zA-Z]*f)'
+commandRegex = '(?:(?:[^\x00"\x27\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\]|\\"(?:[^\x00"\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\])*\\"|\x27[^\x00\x27]*\x27)*[;&|(])?\s*(?:(?:sudo|env|command|exec|time|nohup)\s+|[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*git(?:\s+(?:-[cC]\s+[^\s;&|]+|-[^\s;&|]*))*\s+push\b[^\x00;&|]*\s(?:--force|-[a-zA-Z]*f)'
 decision = "deny"
 priority = 900
 denyMessage = "Force pushes are not allowed. Merge the default branch into the task branch and push normally."
 
 [[rule]]
 toolName = "run_shell_command"
-commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*\s[\\"\x27]*\+[^\s]'
+commandRegex = '(?:(?:[^\x00"\x27\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\]|\\"(?:[^\x00"\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\])*\\"|\x27[^\x00\x27]*\x27)*[;&|(])?\s*(?:(?:sudo|env|command|exec|time|nohup)\s+|[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*git(?:\s+(?:-[cC]\s+[^\s;&|]+|-[^\s;&|]*))*\s+push\b[^\x00;&|]*\s[\\"\x27]*\+[^\s]'
 decision = "deny"
 priority = 900
 denyMessage = "Forced refspec pushes are not allowed."
 
 [[rule]]
 toolName = "run_shell_command"
-commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*\s--no-verify\b'
+commandRegex = '(?:(?:[^\x00"\x27\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\]|\\"(?:[^\x00"\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\])*\\"|\x27[^\x00\x27]*\x27)*[;&|(])?\s*(?:(?:sudo|env|command|exec|time|nohup)\s+|[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*git(?:\s+(?:-[cC]\s+[^\s;&|]+|-[^\s;&|]*))*\s+push\b[^\x00;&|]*\s--no-verify\b'
 decision = "deny"
 priority = 900
 denyMessage = "Do not skip the pre-push hook. Fix the failing check."
 
 [[rule]]
 toolName = "run_shell_command"
-commandRegex = '[^\x00]*git\b[^\x00;&|]*\bpush\b[^\x00;&|]*(?:[\s:+"\x27]|[\s:+"\x27]refs/heads/)dev(?=[\s"\x27\\;&|)]|$)'
+commandRegex = '(?:(?:[^\x00"\x27\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\]|\\"(?:[^\x00"\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\])*\\"|\x27[^\x00\x27]*\x27)*[;&|(])?\s*(?:(?:sudo|env|command|exec|time|nohup)\s+|[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*git(?:\s+(?:-[cC]\s+[^\s;&|]+|-[^\s;&|]*))*\s+push\b[^\x00;&|]*(?:[\s:+"\x27]|[\s:+"\x27]refs/heads/)dev(?=[\s"\x27\\;&|)]|$)'
 decision = "deny"
 priority = 900
 denyMessage = "Never push to the default branch. Push the task branch and open a pull request."
 
 [[rule]]
 toolName = "run_shell_command"
-commandRegex = '[^\x00]*gh\b[^\x00;&|]*\bpr\s+merge\b[^\x00;&|]*\s--admin\b'
+commandRegex = '(?:(?:[^\x00"\x27\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\]|\\"(?:[^\x00"\\]|\\\\(?:\\\\|\\"|[^\x00\\])|\\[^"\\])*\\"|\x27[^\x00\x27]*\x27)*[;&|(])?\s*(?:(?:sudo|env|command|exec|time|nohup)\s+|[A-Za-z_][A-Za-z0-9_]*=[^\s;&|]*\s+)*gh(?:\s+-[^\s;&|]*(?:\s+[^\s;&|-][^\s;&|]*)?)*\s+pr\s+merge\b[^\x00;&|]*\s--admin\b'
 decision = "deny"
 priority = 900
 denyMessage = "Do not bypass branch protection. Use gh pr merge <number> --auto --squash."

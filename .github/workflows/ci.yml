@@ -19,7 +19,10 @@ jobs:
         with:
           persist-credentials: false
       - id: list
-        run: echo "steps=$(python3 -B scripts/check --list)" >> "$GITHUB_OUTPUT"
+        # Assigned first: a failed listing stops this step instead of writing an empty value.
+        run: |
+          steps="$(python3 -B scripts/check --list)"
+          echo "steps=$steps" >> "$GITHUB_OUTPUT"
   run:
     name: ${{ matrix.step.name }}
     needs: plan
@@ -41,7 +44,7 @@ jobs:
             ~/.local/share/pnpm/store
             ~/.npm
             ~/.cache/uv
-          key: deps-${{ runner.os }}-${{ hashFiles('mise.toml', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'uv.lock') }}
+          key: deps-${{ runner.os }}-${{ hashFiles('mise.toml', '**/pnpm-lock.yaml', '**/package-lock.json', '**/*.lock', '!**/node_modules/**') }}
           restore-keys: deps-${{ runner.os }}-
       - name: Cache this step's own build output
         uses: actions/cache@v6
