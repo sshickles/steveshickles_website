@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 CANONICAL = 'sshickles/repo-standard'
+DEPLOYMENT_APPS = {'Vercel': 8329}
 LOCK = '.repo-standard-source.json'
 # Canonical sources. Files under policy/ are rendered, not copied.
 FILES = ['policy/policy.md', 'policy/t3-actions.json', 'CLAUDE.md', 'greptile.json', '.coderabbit.yaml',
@@ -114,6 +115,12 @@ def required_checks(config):
     contexts = {c['context']: c for c in config['ciChecks']}
     if len(contexts) != len(config['ciChecks']):
         raise ValueError('Duplicate ciChecks contexts')
+    deployment = config['integrations'].get('deploymentCheck')
+    if deployment in contexts and deployment not in DEPLOYMENT_APPS:
+        raise ValueError(f'Unknown deployment check: {deployment}')
+    for context, integration in DEPLOYMENT_APPS.items():
+        if context in contexts and contexts[context].get('integration_id') != integration:
+            raise ValueError(f'{context} requires integration {integration}')
     greptile = {'context': 'Greptile Review', 'integration_id': 867647}
     if 'Greptile Review' in contexts and contexts['Greptile Review'] != greptile:
         raise ValueError('Greptile Review requires integration 867647')

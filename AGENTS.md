@@ -1,4 +1,4 @@
-<!-- Generated from sshickles/repo-standard@e1cd77560f2cae9c87d85b9b6af8e6f637a756c8. Do not edit. Rules come from the canonical policy; facts come from .repo-standard.json. -->
+<!-- Generated from sshickles/repo-standard@4e2fdf5e36af9c72739d1099d78663a17d14191c. Do not edit. Rules come from the canonical policy; facts come from .repo-standard.json. -->
 # Agent instructions
 
 These rules are the same in every repository and for every coding agent. They
