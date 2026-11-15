@@ -120,6 +120,11 @@ def check_config(config):
     for key in ("git", "integrations", "review", "development", "facts"):
         if not isinstance(config[key], dict):
             raise ValueError(f"{key} must be an object")
+    if "protection" in config:
+        protection = config["protection"]
+        if (not isinstance(protection, dict) or set(protection) != {"strictUpToDate"}
+                or not isinstance(protection["strictUpToDate"], bool)):
+            raise ValueError("protection must be an object with exactly one boolean key: strictUpToDate")
     if not isinstance(config["repository"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9_.-]*", config["repository"]):
         raise ValueError("repository must be OWNER/REPO")
     if config["profile"] not in ("nextjs", "custom"):
